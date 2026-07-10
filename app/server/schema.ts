@@ -117,6 +117,18 @@ CREATE TABLE IF NOT EXISTS metadata_snapshots (
   codec TEXT
 );
 
+
+CREATE TABLE IF NOT EXISTS destination_worker_events (
+  id TEXT PRIMARY KEY,
+  destination_id TEXT NOT NULL,
+  timestamp TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  state TEXT,
+  message TEXT,
+  detail TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_destination_worker_events_destination_time ON destination_worker_events(destination_id, timestamp DESC);
+
 CREATE TABLE IF NOT EXISTS watchdog_events (
   id TEXT PRIMARY KEY,
   timestamp TEXT NOT NULL,
@@ -132,33 +144,34 @@ CREATE TABLE IF NOT EXISTS user_assets (
   created_at TEXT NOT NULL,
   size INTEGER NOT NULL DEFAULT 0
 );
-`
+`;
 
 export interface SchemaValidationResult {
-  valid: boolean
-  tables: string[]
-  missing: string[]
+  valid: boolean;
+  tables: string[];
+  missing: string[];
 }
 
 const REQUIRED_TABLES = [
-  'streams',
-  'destinations',
-  'output_profiles',
-  'templates',
-  'transmission_kits',
-  'schedules',
-  'audit_entries',
-  'incidents',
-  'log_entries',
-  'metadata_snapshots',
-  'watchdog_events',
-  'user_assets',
-]
+  "streams",
+  "destinations",
+  "output_profiles",
+  "templates",
+  "transmission_kits",
+  "schedules",
+  "audit_entries",
+  "incidents",
+  "log_entries",
+  "metadata_snapshots",
+  "watchdog_events",
+  "destination_worker_events",
+  "user_assets",
+];
 
 export function validateSchema(sql: string): SchemaValidationResult {
   const tables = REQUIRED_TABLES.filter((t) =>
     sql.includes(`CREATE TABLE IF NOT EXISTS ${t}`),
-  )
-  const missing = REQUIRED_TABLES.filter((t) => !tables.includes(t))
-  return { valid: missing.length === 0, tables, missing }
+  );
+  const missing = REQUIRED_TABLES.filter((t) => !tables.includes(t));
+  return { valid: missing.length === 0, tables, missing };
 }

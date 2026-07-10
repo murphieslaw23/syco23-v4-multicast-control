@@ -25,16 +25,16 @@ Manage RTMP destinations, monitor pipeline health, configure templates, and cast
 
 Manage up to 10 RTMP destinations simultaneously. Each destination supports independent status cycling, provider-specific configuration, and real-time health monitoring.
 
-| Provider | Protocol | Use Case |
-|----------|----------|----------|
-| YouTube | RTMPS | Primary live stream |
-| Telegram | RTMPS | Community broadcast |
-| TikTok | RTMPS | Short-form streaming |
-| Twitch | RTMPS | Gaming/IRL |
-| Instagram | RTMPS | Mobile-first audience |
-| Mixer, Mixcloud, Facebook | RTMPS | Additional platforms |
-| Custom RTMP | RTMPS/RTMP | Any RTMP endpoint |
-| **Local** | Internal | **Self-cast to preview player** |
+| Provider                  | Protocol   | Use Case                        |
+| ------------------------- | ---------- | ------------------------------- |
+| YouTube                   | RTMPS      | Primary live stream             |
+| Telegram                  | RTMPS      | Community broadcast             |
+| TikTok                    | RTMPS      | Short-form streaming            |
+| Twitch                    | RTMPS      | Gaming/IRL                      |
+| Instagram                 | RTMPS      | Mobile-first audience           |
+| Mixer, Mixcloud, Facebook | RTMPS      | Additional platforms            |
+| Custom RTMP               | RTMPS/RTMP | Any RTMP endpoint               |
+| **Local**                 | Internal   | **Self-cast to preview player** |
 
 ### Responsive Layout Engine
 
@@ -68,14 +68,14 @@ Live pipeline status with FPS, bitrate, and codec reporting. Watchdog integratio
 
 ### Layout Modes
 
-| Portrait | Landscape | Tablet | TV |
-|----------|-----------|--------|-----|
+| Portrait                                      | Landscape                                       | Tablet                                    | TV                                |
+| --------------------------------------------- | ----------------------------------------------- | ----------------------------------------- | --------------------------------- |
 | ![Portrait](docs/screenshots/m1-portrait.png) | ![Landscape](docs/screenshots/m1-landscape.png) | ![Tablet](docs/screenshots/m1-tablet.png) | ![TV](docs/screenshots/m1-tv.png) |
 
 ### Destination Management
 
-| Empty State | Add Form | Populated | Status Cycling |
-|-------------|----------|-----------|----------------|
+| Empty State                                          | Add Form                                  | Populated                                                    | Status Cycling                               |
+| ---------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------ | -------------------------------------------- |
 | ![Empty](docs/screenshots/m4-destinations-empty.png) | ![Form](docs/screenshots/m4-add-dest.png) | ![Populated](docs/screenshots/m4-destinations-populated.png) | ![Live](docs/screenshots/m4-status-live.png) |
 
 ### Template Gallery & Transmission Kits
@@ -105,13 +105,13 @@ Live pipeline status with FPS, bitrate, and codec reporting. Watchdog integratio
 
 ### Module Map
 
-| Module | Files | Responsibility |
-|--------|-------|----------------|
-| `types/` | 1 | All TypeScript interfaces |
-| `composables/` | 15 | Business logic layer |
-| `components/` | 6 | Vue SFC presentation |
-| `server/` | 4 | Schema, metadata, watchdog |
-| `layout/` | 1 | Viewport detection engine |
+| Module         | Files | Responsibility             |
+| -------------- | ----- | -------------------------- |
+| `types/`       | 1     | All TypeScript interfaces  |
+| `composables/` | 15    | Business logic layer       |
+| `components/`  | 6     | Vue SFC presentation       |
+| `server/`      | 4     | Schema, metadata, watchdog |
+| `layout/`      | 1     | Viewport detection engine  |
 
 ### Tech Stack
 
@@ -144,12 +144,12 @@ The **local** provider works identically to all other providers in terms of CRUD
 
 ### Key Files
 
-| File | What it does |
-|------|-------------|
-| `app/types/index.ts` | `'local'` in Provider union |
-| `app/composables/store.ts` | `getLocalDestination()` helper |
-| `app/components/DestinationMatrix.vue` | SELF badge, dropdown option |
-| `app/components/SycoVideoPlayer.vue` | SELF CAST display |
+| File                                   | What it does                   |
+| -------------------------------------- | ------------------------------ |
+| `app/types/index.ts`                   | `'local'` in Provider union    |
+| `app/composables/store.ts`             | `getLocalDestination()` helper |
+| `app/components/DestinationMatrix.vue` | SELF badge, dropdown option    |
+| `app/components/SycoVideoPlayer.vue`   | SELF CAST display              |
 
 ---
 
@@ -191,17 +191,17 @@ npm run e2e           # Playwright E2E (36 screenshot specs)
 
 ### All Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Vite dev server |
-| `npm run build` | Type-check + production build |
-| `npm run preview` | Preview production build |
-| `npm run test` | Run all unit tests |
-| `npm run test:watch` | Watch mode |
-| `npm run test:coverage` | Coverage report |
-| `npm run lint` | ESLint |
-| `npm run typecheck` | TypeScript check |
-| `npm run e2e` | Playwright E2E |
+| Command                 | Description                   |
+| ----------------------- | ----------------------------- |
+| `npm run dev`           | Vite dev server               |
+| `npm run build`         | Type-check + production build |
+| `npm run preview`       | Preview production build      |
+| `npm run test`          | Run all unit tests            |
+| `npm run test:watch`    | Watch mode                    |
+| `npm run test:coverage` | Coverage report               |
+| `npm run lint`          | ESLint                        |
+| `npm run typecheck`     | TypeScript check              |
+| `npm run e2e`           | Playwright E2E                |
 
 ---
 
@@ -272,28 +272,27 @@ syco23-multicast-control/
 
 ### Color Palette
 
-| Token | Hex | Usage |
-|-------|-----|-------|
-| `--syco-surface-0` | `#050506` | Deepest background |
-| `--syco-surface-1` | `#0b0a0d` | Panel backgrounds |
-| `--syco-surface-2` | `#121115` | Header, nav |
-| `--syco-surface-3` | `#18161b` | Interactive elements |
-| `--syco-border` | `#232128` | Borders |
-| `--syco-text` | `#ded9e2` | Primary text |
-| `--syco-text-secondary` | `#8a8194` | Secondary text |
-| `--syco-text-muted` | `#6b7280` | Labels, timestamps |
-| `--syco-rust` | `#b7410e` | Live indicator, active nav |
-| `--syco-crimson` | `#8b1a1a` | Errors, danger |
-| `--syco-amber` | `#9a7b2e` | Warnings, armed state |
-| `--syco-copper` | `#6b8e6b` | Success, OK |
-| `--syco-turquoise` | `#4a7c7a` | Local provider, self-cast |
+| Token                   | Hex       | Usage                      |
+| ----------------------- | --------- | -------------------------- |
+| `--syco-surface-0`      | `#050506` | Deepest background         |
+| `--syco-surface-1`      | `#0b0a0d` | Panel backgrounds          |
+| `--syco-surface-2`      | `#121115` | Header, nav                |
+| `--syco-surface-3`      | `#18161b` | Interactive elements       |
+| `--syco-border`         | `#232128` | Borders                    |
+| `--syco-text`           | `#ded9e2` | Primary text               |
+| `--syco-text-secondary` | `#8a8194` | Secondary text             |
+| `--syco-text-muted`     | `#6b7280` | Labels, timestamps         |
+| `--syco-rust`           | `#b7410e` | Live indicator, active nav |
+| `--syco-crimson`        | `#8b1a1a` | Errors, danger             |
+| `--syco-amber`          | `#9a7b2e` | Warnings, armed state      |
+| `--syco-copper`         | `#6b8e6b` | Success, OK                |
+| `--syco-turquoise`      | `#4a7c7a` | Local provider, self-cast  |
 
 ### Typography
 
 - **Display:** JetBrains Mono — Section headers, badges
 - **Body:** Inter — Content, titles
 - **Mono:** JetBrains Mono — Values, timestamps, code
-
 
 ---
 
@@ -385,3 +384,9 @@ Endpoints:
 - `GET /api/metadata/stats`
 - `GET /api/metadata/health`
 - `POST /api/metadata/refresh` (operator)
+
+## Per-destination worker isolation
+
+Each configured output is executed by an independent FFmpeg child process. A provider failure no longer terminates healthy outputs. Worker state and metrics are available from `GET /api/destination-workers`; operators can restart a single worker with `POST /api/destination-workers/:id/restart`, and persistent lifecycle history is available from `GET /api/destination-workers/:id/events`.
+
+Recovery policy is configured with `SYCO_DESTINATION_MAX_RESTARTS`, `SYCO_DESTINATION_BACKOFF_MS`, and `SYCO_DESTINATION_COOLDOWN_MS`. Exhausted workers enter cooldown and create a critical incident without taking down remaining live destinations.
