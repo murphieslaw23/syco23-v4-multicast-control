@@ -31,7 +31,6 @@ import { HlsPreviewRuntime } from "./runtime/hls-preview-runtime";
 import { PreviewTicketStore } from "./runtime/preview-tickets";
 import type {
   DestinationState,
-  OutputProfile,
   SceneGraph,
   Template,
 } from "../contracts/domain";
@@ -46,6 +45,7 @@ import { IdempotencyStore } from "./runtime/idempotency-store";
 import { insertLog } from "./dao/logs";
 import { AuthService } from "./runtime/auth-service";
 import { RateLimiter } from "./runtime/rate-limiter";
+import { handleProfileRoutes } from "./http/routes/profiles";
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "0.0.0.0";
@@ -1104,22 +1104,19 @@ async function route(
       return json(response, 204, null);
     }
 
-    if (request.method === "GET" && url.pathname === "/api/profiles")
-      return json(response, 200, { ok: true, data: service.listProfiles() });
-    if (request.method === "POST" && url.pathname === "/api/profiles") {
-      requireRole(context, "admin");
-      const input = (await body(request)) as OutputProfile;
-      return json(response, 201, {
-        ok: true,
-        data: await audited(
-          context,
-          "create",
-          "profile",
-          input.id || null,
-          () => service.createProfile(input),
-        ),
-      });
-    }
+    if (await handleProfileRoutes({
+      request,
+      response,
+      url,
+      context,
+      requestId,
+      service,
+      operations,
+      readBody: body,
+      sendJson: json,
+      requireRole,
+      audited,
+    })) return;
 
     if (request.method === "POST" && url.pathname === "/api/pipeline/start") {
       requireRole(context, "operator");

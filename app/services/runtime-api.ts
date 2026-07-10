@@ -14,6 +14,10 @@ export interface ProviderMonitorEvent { id:string; destinationId:string; timesta
 export interface RetentionResult { [table:string]: number }
 export interface SystemMetrics { timestamp:string; uptimeSeconds:number; process:{pid:number;rssBytes:number;heapUsedBytes:number;heapTotalBytes:number}; memory:{totalBytes:number;freeBytes:number;usedPercent:number}; cpu:{cores:number;load1:number;load5:number;load15:number}; disk:{path:string;totalBytes:number;freeBytes:number;usedPercent:number}|null; network:{receivedBytes:number;transmittedBytes:number}|null; eventLoop:{meanMs:number;maxMs:number;p99Ms:number} }
 export interface WorkerSnapshot { id?:string; destinationId?:string; state:string; pid:number|null; health?:string; restartCount:number; lastError:string|null; cooldownUntil?:string|null; metrics?:Record<string,number> }
+
+export interface ProviderCapabilities { protocols: Array<'rtmp'|'rtmps'>; metadata:boolean; platformAck:boolean; hlsPlayback:boolean; manualSetup:boolean }
+export interface ProviderProfilePolicy { widths:number[]; heights:number[]; fps:number[]; videoBitrateKbps:{min:number;max:number}; audioBitrateKbps:{min:number;max:number}; codecs:string[]; keyframeIntervalSeconds:number; preferredEndpoint?:string }
+export interface ProviderDefinition { id:Provider; label:string; capabilities:ProviderCapabilities; profilePolicy:ProviderProfilePolicy }
 interface Envelope<T> { ok: boolean; data?: T; error?: ApiFailure | string }
 
 let csrfToken = sessionStorage.getItem('syco_csrf') || ''
@@ -94,7 +98,12 @@ export const runtimeApi = {
   deleteDestination: (id:string) => request<void>(`/api/destinations/${encodeURIComponent(id)}`,{method:'DELETE'}),
   status: () => request<RuntimeStatus>('/api/status'),
   destinations: () => request<DestinationState[]>('/api/destinations'),
+  providers: () => request<ProviderDefinition[]>('/api/providers'),
   profiles: () => request<OutputProfile[]>('/api/profiles'),
+  profile: (id:string) => request<OutputProfile>(`/api/profiles/${encodeURIComponent(id)}`),
+  createProfile: (input:OutputProfile) => request<OutputProfile>('/api/profiles',{method:'POST',body:JSON.stringify(input)}),
+  updateProfile: (id:string,patch:Partial<OutputProfile>,version?:number) => request<OutputProfile>(`/api/profiles/${encodeURIComponent(id)}`,{method:'PATCH',headers:version?{'if-match':`"${version}"`}:undefined,body:JSON.stringify(patch)}),
+  deleteProfile: (id:string) => request<void>(`/api/profiles/${encodeURIComponent(id)}`,{method:'DELETE'}),
   transmissionKits: () => request<{items:TransmissionKit[];total:number}>('/api/transmission-kits'),
   generateTransmissionKit: (input: {destinationId:string;templateId?:string;title?:string;artist?:string;show?:string;publicUrl?:string}) => request<TransmissionKit>('/api/transmission-kits/generate',{method:'POST',body:JSON.stringify(input)}),
   updateTransmissionKit: (id:string,patch:Partial<Pick<TransmissionKit,'titleBlock'|'descriptionBlock'|'metadata'|'labels'|'launchNotes'>>) => request<TransmissionKit>(`/api/transmission-kits/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(patch)}),

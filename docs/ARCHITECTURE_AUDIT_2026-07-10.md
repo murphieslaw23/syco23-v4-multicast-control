@@ -10,7 +10,7 @@ Audit basis: `IMPLEMENTATION_MASTERPLAN.md`, the V4.1 transmission user stories,
 |---|---|---|
 | TX-01 Template gallery | Implemented | Persistent templates, generated SVG previews, provider filtering. |
 | TX-02 Custom template builder | Implemented | Managed image assets, scene graph, drag and resize editor. |
-| TX-03 Provider output profiles | Partial | Provider constraints and FFmpeg binding exist; operator profile editor remains incomplete. |
+| TX-03 Provider output profiles | Implemented | Persistent provider-aware editor, destination assignment, server validation, revision history, ETags and conflict handling are implemented. |
 | TX-04 Multicast providers | Implemented with acceptance caveats | Per-destination FFmpeg workers and first-class provider policies exist; real sandbox acceptance is still required. |
 | TX-05 Transmission kits | Fixed in this milestone | Replaced browser-only dummy kits with persisted, destination/template/provider-specific server generation. |
 | TX-06 In-app preview | Implemented | Authenticated HLS preview and browser recovery states. |
@@ -24,22 +24,22 @@ Audit basis: `IMPLEMENTATION_MASTERPLAN.md`, the V4.1 transmission user stories,
 
 ### High priority
 
-1. **Runtime entrypoint concentration** — `runtime-server.ts` combines dependency construction, HTTP routing, auth, static serving, WebSocket transport, lifecycle and observability. It is over 1,400 lines and is the primary change-conflict and regression hotspot.
+1. **Runtime entrypoint concentration** — `runtime-server.ts` still combines dependency construction, authentication, static serving, WebSocket transport, lifecycle and observability. Profile routes have now been extracted to `app/server/http/routes/profiles.ts`; the remaining route groups should follow the same dependency-injected handler pattern.
 2. **Contract boundary drift** — shared server/client contracts were stored in `app/types`, despite the plan requiring `app/contracts`. This milestone introduces `app/contracts/domain.ts` and `app/contracts/api.ts`; migration should continue incrementally.
 3. **Browser-only transmission kits** — the UI previously generated disposable dummy kits and passed a template ID as a destination ID. This violated TX-05, persistence, audit and canonical-state requirements. Fixed in this milestone.
 4. **Durability decision outstanding** — sql.js atomic snapshots are restart-safe but do not provide native SQLite WAL concurrency. M7 still requires a formal native SQLite or external durable DB choice.
 
 ### Medium priority
 
-5. **Incomplete optimistic concurrency** — templates support ETags; destinations, profiles, schedules and kits do not yet expose revisions.
+5. **Incomplete optimistic concurrency** — templates and output profiles now support ETags and immutable revisions; destinations, schedules and kits remain outstanding.
 6. **Provider acceptance gap** — adapters normalize HTTP responses, but real provider sandbox tests and OAuth/webhook workflows remain incomplete.
 7. **Release evidence gap** — CI exists, but signed artifacts, SBOM, image scan, restore drill and rolling upgrade evidence remain unfinished.
 8. **Cross-project scope** — webplayer, AzuraCast infrastructure and Telegram bots are separate projects and are not implemented in this repository.
 
 ## Ordered next work
 
-1. Split runtime route groups and dependency composition without changing API behavior.
-2. Finish the output-profile editor and revision/ETag support for every mutable resource.
+1. Continue extracting runtime route groups and move dependency construction into a composition root without changing API behavior.
+2. Extend revision/ETag support to destinations, schedules and transmission kits.
 3. Add provider-specific kit editing, copy actions and launch checklist status.
 4. Execute native SQLite/WAL evaluation and migration spike.
 5. Add WCAG AA automation, mobile Playwright workflows and provider sandbox contract tests.

@@ -8,8 +8,8 @@
 
 Manage RTMP destinations, monitor pipeline health, configure templates, and cast to your local preview — all from a responsive, dark-themed operator interface built with Vue 3 + Vite + TypeScript.
 
-[![Tests](https://img.shields.io/badge/tests-160%20passed-6b8e6b?style=flat-square&logo=vitest&logoColor=white)](https://github.com)
-[![Coverage](https://img.shields.io/badge/coverage-100%25-4a7c7a?style=flat-square&logo=vitest&logoColor=white)](https://github.com)
+[![Tests](https://img.shields.io/badge/tests-223%20passed-6b8e6b?style=flat-square&logo=vitest&logoColor=white)](https://github.com)
+[![TypeScript](https://img.shields.io/badge/typecheck-passing-4a7c7a?style=flat-square&logo=typescript&logoColor=white)](https://github.com)
 [![Build](https://img.shields.io/badge/build-passing-b7410e?style=flat-square&logo=vite&logoColor=white)](https://github.com)
 [![License](https://img.shields.io/badge/license-MIT-6b7280?style=flat-square)](LICENSE)
 
@@ -48,7 +48,11 @@ Five viewport modes automatically detected from window dimensions:
 
 ### Template & Transmission Kit System
 
-Browse built-in templates or create custom overlays. Generate transmission kits that combine title blocks, description blocks, and metadata labels for each destination.
+Browse built-in templates or create custom overlays. Generate persistent, provider-specific transmission kits that combine title blocks, description blocks, launch notes, metadata labels, and destination binding.
+
+### Provider Output Profiles
+
+Create revisioned encoder profiles from provider policy constraints, including resolution, frame rate, codec, video bitrate, audio bitrate, and keyframe policy. Profiles are validated on save and again before FFmpeg starts, then assigned directly to destinations.
 
 ### Real-Time Log Viewer
 
@@ -98,26 +102,31 @@ Live pipeline status with FPS, bitrate, and codec reporting. Watchdog integratio
 
 ### Design Principles
 
-- **Composables-first** — All business logic lives in Vue 3 composables. Components are thin presentation layers.
-- **Single reactive store** — One `reactive<SycoAppState>` instance. No Pinia, no event bus.
-- **100% coverage gate** — Vitest enforces 100% on composables, types, and server modules.
-- **Framework-agnostic server** — `app/server/` contains pure TypeScript with zero Vue/DOM dependencies.
+- **Canonical runtime state** — The Node control runtime owns persistent operational state; the Vue UI consumes APIs and runtime events.
+- **Contract boundary** — Shared domain and API contracts live under `app/contracts/`.
+- **Isolated destination workers** — Every outbound provider has an independent FFmpeg supervisor, retry policy, cooldown state, and metrics.
+- **Transactional persistence** — Operational writes run through the persistent database and atomic snapshot flushes.
+- **Policy enforcement at boundaries** — Provider and profile validation run before persistence and before worker launch.
+- **Audited mutations** — Privileged configuration changes are role-checked, audited, revisioned, and conflict-aware where supported.
 
 ### Module Map
 
-| Module         | Files | Responsibility             |
-| -------------- | ----- | -------------------------- |
-| `types/`       | 1     | All TypeScript interfaces  |
-| `composables/` | 15    | Business logic layer       |
-| `components/`  | 6     | Vue SFC presentation       |
-| `server/`      | 4     | Schema, metadata, watchdog |
-| `layout/`      | 1     | Viewport detection engine  |
+| Module | Responsibility |
+| --- | --- |
+| `app/contracts/` | Shared domain and API contracts |
+| `app/components/` | Responsive Vue operator surfaces |
+| `app/composables/` | Client-side state and runtime API coordination |
+| `app/server/dao/` | Persistent resource access |
+| `app/server/http/routes/` | Dependency-injected HTTP route groups |
+| `app/server/runtime/` | Authentication, scheduling, monitoring, retention, telemetry and control services |
+| `app/server/ffmpeg/` | Command compilation, worker isolation and process supervision |
+| `app/server/scene/` | Scene validation, SVG preview and FFmpeg overlay compilation |
 
 ### Tech Stack
 
 ```
-Vue 3 (Composition API) · Vite 5 · TypeScript 5.4
-Vitest 1.x · Playwright 1.x · @vitest/coverage-v8
+Vue 3 (Composition API) · Vite 8 · TypeScript 5.4
+Vitest 4 · Playwright 1 · sql.js · ws · FFmpeg
 ESLint 8 · vue-tsc 2.x
 ```
 
@@ -328,6 +337,7 @@ Runtime endpoints:
 - `GET|POST /api/destinations`
 - `PATCH|DELETE /api/destinations/:id`
 - `GET|POST /api/profiles`
+- `GET|PATCH|DELETE /api/profiles/:id`
 - `POST /api/pipeline/start`
 - `POST /api/pipeline/stop`
 - `GET /api/logs`

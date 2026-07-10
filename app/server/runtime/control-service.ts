@@ -7,7 +7,7 @@ import {
   updateDestination,
   deleteDestination,
 } from "../dao/destinations";
-import { getAllProfiles, insertProfile } from "../dao/profiles";
+import { deleteProfile, getAllProfiles, getProfileById, insertProfile, updateProfile } from "../dao/profiles";
 import { deleteTemplate, getAllTemplates, getTemplateById, insertTemplate, updateTemplate } from "../dao/templates";
 import { validateScene } from "../scene/scene-runtime";
 import { getAssetById } from "../dao/userAssets";
@@ -217,14 +217,63 @@ export class ControlService {
     this.events.publish("destination.deleted", { id });
   }
 
+  getProfile(id: string): OutputProfile {
+    const profile = getProfileById(this.persistence.database, id);
+    if (!profile) throw new ApiError("PROFILE_NOT_FOUND", "Output profile not found", 404);
+    return structuredClone(profile);
+  }
+
   async createProfile(profile: OutputProfile): Promise<OutputProfile> {
-    const record = { ...profile, id: profile.id || createRuntimeId("profile") };
+    const now = new Date().toISOString();
+    const record: OutputProfile = {
+      ...profile,
+      id: profile.id || createRuntimeId("profile"),
+      name: String(profile.name || "").trim(),
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (!record.name) throw new ApiError("PROFILE_NAME_REQUIRED", "Profile name is required", 422);
+    if (getProfileById(this.persistence.database, record.id)) throw new ApiError("PROFILE_EXISTS", "Output profile id already exists", 409);
     const errors = validateProfileForProvider(record);
     if (errors.length) throw new ApiError("PROFILE_INVALID", errors.join("; "), 422);
     await this.persistence.transaction((db) => insertProfile(db, record));
     getRuntimeStore().profiles.push(record);
+    this.log("success", "profiles", `Created ${record.name}`);
     this.events.publish("profile.created", record);
     return structuredClone(record);
+  }
+
+  async patchProfile(id: string, patch: Partial<Omit<OutputProfile, "id" | "version" | "createdAt" | "updatedAt">>): Promise<OutputProfile> {
+    const current = this.getProfile(id);
+    const updated: OutputProfile = {
+      ...current,
+      ...patch,
+      id,
+      name: String(patch.name ?? current.name).trim(),
+      version: (current.version ?? 1) + 1,
+      createdAt: current.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+    if (!updated.name) throw new ApiError("PROFILE_NAME_REQUIRED", "Profile name is required", 422);
+    const errors = validateProfileForProvider(updated);
+    if (errors.length) throw new ApiError("PROFILE_INVALID", errors.join("; "), 422);
+    await this.persistence.transaction((db) => updateProfile(db, id, updated));
+    const index = getRuntimeStore().profiles.findIndex((item) => item.id === id);
+    if (index >= 0) getRuntimeStore().profiles[index] = updated;
+    this.log("success", "profiles", `Updated ${updated.name} to revision ${updated.version}`);
+    this.events.publish("profile.updated", updated);
+    return structuredClone(updated);
+  }
+
+  async removeProfile(id: string): Promise<void> {
+    const profile = this.getProfile(id);
+    const inUse = getRuntimeStore().destinations.find((destination) => destination.videoProfile === id || destination.audioProfile === id);
+    if (inUse) throw new ApiError("PROFILE_IN_USE", `Profile is assigned to ${inUse.label}`, 409);
+    await this.persistence.transaction((db) => deleteProfile(db, id));
+    getRuntimeStore().profiles = getRuntimeStore().profiles.filter((item) => item.id !== id);
+    this.log("warning", "profiles", `Removed ${profile.name}`);
+    this.events.publish("profile.deleted", { id });
   }
 
   async startPipeline(

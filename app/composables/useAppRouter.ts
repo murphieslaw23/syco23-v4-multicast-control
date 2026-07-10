@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
-export type AppRoute = 'live'|'destinations'|'templates'|'schedule'|'archive'|'status'|'logs'|'overlay'|'about'
-const valid = new Set<AppRoute>(['live','destinations','templates','schedule','archive','status','logs','overlay','about'])
+export type AppRoute = 'live'|'destinations'|'profiles'|'templates'|'schedule'|'archive'|'status'|'logs'|'overlay'|'about'
+const valid = new Set<AppRoute>(['live','destinations','profiles','templates','schedule','archive','status','logs','overlay','about'])
 const route = ref<AppRoute>('live')
 
 function fromHash(): AppRoute {

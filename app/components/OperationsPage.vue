@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { runtimeApi, type AuditEntry, type BackupRecord, type CurrentUser, type Incident, type ProviderProbeSnapshot, type RuntimeLog, type RuntimeSession, type ScheduleJob, type SystemMetrics, type WorkerSnapshot } from '../services/runtime-api'
 import type { AppRoute } from '../composables/useAppRouter'
-import type { DestinationState, Provider } from '../types'
+import type { DestinationState, OutputProfile } from '../types'
 
 const props = defineProps<{ route: AppRoute }>()
 const user = ref<CurrentUser|null>(null)
@@ -16,6 +16,7 @@ const audit = ref<AuditEntry[]>([])
 const backups = ref<BackupRecord[]>([])
 const workers = ref<WorkerSnapshot[]>([])
 const destinations = ref<DestinationState[]>([])
+const profiles = ref<OutputProfile[]>([])
 const providerProbes = ref<ProviderProbeSnapshot[]>([])
 const systemMetrics = ref<SystemMetrics|null>(null)
 const retentionResult = ref<Record<string,number>|null>(null)
@@ -27,6 +28,7 @@ const destinationDraft = ref<DestinationState>({id:'',provider:'custom-rtmp',lab
 
 const isOperator = computed(()=>user.value?.role==='operator'||user.value?.role==='admin')
 const isAdmin = computed(()=>user.value?.role==='admin')
+const compatibleProfiles = computed(()=>profiles.value.filter(item=>item.provider===destinationDraft.value.provider||item.provider==='custom-rtmp'))
 const filteredLogs = computed(()=>logs.value.filter(item=>(level.value==='all'||item.level===level.value)&&`${item.source} ${item.message}`.toLowerCase().includes(search.value.toLowerCase())))
 
 async function refresh(){
@@ -38,7 +40,7 @@ async function refresh(){
   if(props.route==='schedule') schedules.value=await runtimeApi.schedules()
   if(props.route==='status'){ const [i,w,d,p,m]=await Promise.all([runtimeApi.incidents(),runtimeApi.workers(),runtimeApi.destinations(),runtimeApi.providerMonitor(),runtimeApi.systemMetrics()]); incidents.value=i;workers.value=w;destinations.value=d;providerProbes.value=p;systemMetrics.value=m }
   if(props.route==='about'&&isAdmin.value){ [audit.value,backups.value]=await Promise.all([runtimeApi.audit(),runtimeApi.backups()]) }
-  if(props.route==='destinations') destinations.value=await runtimeApi.destinations()
+  if(props.route==='destinations'){ const [d,p]=await Promise.all([runtimeApi.destinations(),runtimeApi.profiles()]); destinations.value=d; profiles.value=p; if(!compatibleProfiles.value.some(item=>item.id===destinationDraft.value.videoProfile)){ destinationDraft.value.videoProfile=compatibleProfiles.value[0]?.id||''; destinationDraft.value.audioProfile=destinationDraft.value.videoProfile } }
  } catch(e){ error.value=e instanceof Error?e.message:String(e) } finally { loading.value=false }
 }
 async function createSchedule(){
@@ -54,12 +56,16 @@ async function restore(id:string){ if(confirm(`Restore ${id}? Current database s
 async function saveDestination(){
  const value={...destinationDraft.value,id:destinationDraft.value.id||crypto.randomUUID(),label:destinationDraft.value.label.trim()}
  if(!value.label||!value.endpointUrl||!value.streamKeyRef){error.value='Label, endpoint, and secret reference are required';return}
+ if(!value.videoProfile){error.value='An output profile is required';return}
+ value.audioProfile=value.videoProfile
  const existing=destinations.value.some(item=>item.id===value.id)
  if(existing) await runtimeApi.updateDestination(value.id,value); else await runtimeApi.createDestination(value)
  destinationDraft.value={...destinationDraft.value,id:'',label:'',endpointUrl:'',streamKeyRef:'',notes:''}; await refresh()
 }
 function editDestination(item:DestinationState){ destinationDraft.value=JSON.parse(JSON.stringify(item)) }
+function profileLabel(id:string){ const profile=profiles.value.find(item=>item.id===id); return profile?`${profile.name} · ${profile.width}×${profile.height}/${profile.fps}`:id }
 async function deleteDestination(id:string){if(confirm('Delete this destination?')){await runtimeApi.deleteDestination(id);await refresh()}}
+watch(()=>destinationDraft.value.provider,()=>{ if(!compatibleProfiles.value.some(item=>item.id===destinationDraft.value.videoProfile)){ destinationDraft.value.videoProfile=compatibleProfiles.value[0]?.id||''; destinationDraft.value.audioProfile=destinationDraft.value.videoProfile } })
 watch(()=>props.route,()=>void refresh())
 onMounted(()=>void refresh())
 </script>
@@ -78,6 +84,7 @@ onMounted(()=>void refresh())
     <label>Endpoint<input v-model="destinationDraft.endpointUrl" placeholder="rtmps://…" required></label>
     <label>Secret reference<input v-model="destinationDraft.streamKeyRef" placeholder="env:YOUTUBE_STREAM_KEY" required></label>
     <label>Protocol<select v-model="destinationDraft.protocol"><option>rtmp</option><option>rtmps</option></select></label>
+    <label>Output profile<select v-model="destinationDraft.videoProfile" required><option value="" disabled>Select profile</option><option v-for="profile in compatibleProfiles" :key="profile.id" :value="profile.id">{{ profile.name }} · {{ profile.width }}×{{ profile.height }}/{{ profile.fps }}</option></select></label>
     <label>Monitoring<select v-model="destinationDraft.monitorMode"><option value="rtmp-output">FFmpeg output only</option><option value="platform-ack">Platform acknowledgment</option><option value="hls-playback">HLS playback</option></select></label>
     <label v-if="destinationDraft.monitorMode==='platform-ack'">Acknowledgment URL<input v-model="destinationDraft.providerAckUrl" type="url" placeholder="https://api.provider/status"></label>
     <label v-if="destinationDraft.monitorMode==='hls-playback'">Playback URL<input v-model="destinationDraft.hlsPlaybackUrl" type="url" placeholder="https://cdn.provider/live.m3u8"></label>
@@ -86,7 +93,7 @@ onMounted(()=>void refresh())
     <label>Notes<textarea v-model="destinationDraft.notes"></textarea></label>
     <button class="control-button control-button--primary" type="submit">Save destination</button>
    </form>
-   <div class="ops-panel"><h2>Configured outputs</h2><div class="card-list"><article v-for="item in destinations" :key="item.id" class="data-card"><div><strong>{{ item.label }}</strong><p>{{ item.provider }} · {{ item.status }} · {{ item.monitorMode }}</p><small>{{ item.endpointUrl }}</small></div><div v-if="isAdmin" class="inline-actions"><button @click="editDestination(item)">Edit</button><button class="danger" @click="deleteDestination(item.id)">Delete</button></div></article><p v-if="!destinations.length" class="empty">No destinations configured.</p></div></div>
+   <div class="ops-panel"><h2>Configured outputs</h2><div class="card-list"><article v-for="item in destinations" :key="item.id" class="data-card"><div><strong>{{ item.label }}</strong><p>{{ item.provider }} · {{ item.status }} · {{ item.monitorMode }}</p><small>Profile: {{ profileLabel(item.videoProfile) }}</small><small>{{ item.endpointUrl }}</small></div><div v-if="isAdmin" class="inline-actions"><button @click="editDestination(item)">Edit</button><button class="danger" @click="deleteDestination(item.id)">Delete</button></div></article><p v-if="!destinations.length" class="empty">No destinations configured.</p></div></div>
   </div>
  </template>
 

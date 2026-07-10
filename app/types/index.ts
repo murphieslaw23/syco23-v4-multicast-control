@@ -86,6 +86,9 @@ export interface OutputProfile {
   audioBitrate: number
   fps: number
   codec: string
+  version?: number
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface LogEntry {

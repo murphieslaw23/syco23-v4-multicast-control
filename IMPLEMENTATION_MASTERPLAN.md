@@ -83,3 +83,13 @@ A capability is complete only when its normal path, rejection path, restart reco
 - M6: provider constraints, probes, metadata publishing and persisted transmission-kit generation implemented.
 - M7: pending architecture decision for native SQLite/WAL versus external durable database, route/composition split, SBOM/image signing, restore and rolling-upgrade drills.
 - Detailed story and architecture findings: `docs/ARCHITECTURE_AUDIT_2026-07-10.md`.
+
+
+## 2026-07-10 implementation update — output profiles
+
+- TX-03 is now implemented end to end.
+- Added persistent profile revisions, timestamps and ETag conflict detection.
+- Fixed the profile DAO column mapping defect for `video_bitrate` and `audio_bitrate`.
+- Added a provider-policy-driven operator editor and destination profile assignment.
+- Extracted profile HTTP handling from the runtime entrypoint into `app/server/http/routes/profiles.ts`.
+- Remaining concurrency work: destinations, schedules and transmission kits.
