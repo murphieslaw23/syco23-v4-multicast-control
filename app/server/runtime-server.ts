@@ -11,6 +11,7 @@ import { SchedulerRuntime } from './runtime/scheduler'
 import { ApiError, asApiError } from './runtime/errors'
 import { WebSocketTicketStore } from './runtime/ws-tickets'
 import { WatchdogRuntime } from './runtime/watchdog-runtime'
+import { MetadataRuntime } from './runtime/metadata-runtime'
 import type { DestinationState, OutputProfile } from '../types'
 
 const port = Number(process.env.PORT || 3000)
@@ -29,6 +30,15 @@ const watchdog = new WatchdogRuntime(service, persistence, operations, events, {
   maxRestarts: Number(process.env.SYCO_WATCHDOG_MAX_RESTARTS || 3),
   baseBackoffMs: Number(process.env.SYCO_WATCHDOG_BACKOFF_MS || 2000),
   cooldownMs: Number(process.env.SYCO_WATCHDOG_COOLDOWN_MS || 60000),
+})
+const metadata = new MetadataRuntime(persistence, events, {
+  baseUrl: process.env.SYCO_AZURACAST_URL || '',
+  station: process.env.SYCO_AZURACAST_STATION || '',
+  apiKey: process.env.SYCO_AZURACAST_API_KEY,
+  pollIntervalMs: Number(process.env.SYCO_METADATA_POLL_MS || 15000),
+  timeoutMs: Number(process.env.SYCO_METADATA_TIMEOUT_MS || 5000),
+  staleAfterMs: Number(process.env.SYCO_METADATA_STALE_MS || 60000),
+  maxBackoffMs: Number(process.env.SYCO_METADATA_MAX_BACKOFF_MS || 300000),
 })
 const backupRoot = resolve(process.env.SYCO_BACKUP_DIR || join(process.cwd(), 'data/backups'))
 
@@ -109,6 +119,10 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   try {
     if (request.method === 'GET' && url.pathname === '/api/me') return json(response, 200, { ok: true, data: context })
     if (request.method === 'POST' && url.pathname === '/api/events/ticket') return json(response, 201, { ok: true, data: wsTickets.issue(context) }, requestId)
+    if (request.method === 'GET' && url.pathname === '/api/metadata') return json(response, 200, { ok: true, data: metadata.snapshot() }, requestId)
+    if (request.method === 'GET' && url.pathname === '/api/metadata/stats') return json(response, 200, { ok: true, data: metadata.stats() }, requestId)
+    if (request.method === 'GET' && url.pathname === '/api/metadata/health') return json(response, 200, { ok: true, data: metadata.snapshot().health }, requestId)
+    if (request.method === 'POST' && url.pathname === '/api/metadata/refresh') { requireRole(context, 'operator'); return json(response, 200, { ok: true, data: await metadata.poll() }, requestId) }
     if (request.method === 'GET' && url.pathname === '/api/status') return json(response, 200, { ok: true, data: { ...service.status(), watchdog: watchdog.snapshot() } })
     if (request.method === 'GET' && url.pathname === '/api/watchdog/events') {
       const limit = Math.max(1, Math.min(Number(url.searchParams.get('limit') || 100), 500))
@@ -184,8 +198,10 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
 
 async function main(): Promise<void> {
   await service.initialize()
+  await metadata.initialize()
   scheduler.start()
   watchdog.start()
+  metadata.start()
   const server = createServer((request, response) => void route(request, response))
   const sockets = new WebSocketServer({ noServer: true })
   server.on('upgrade', (request, socket, head) => {
@@ -201,7 +217,7 @@ async function main(): Promise<void> {
     client.on('close', unsubscribe)
   })
   server.listen(port, host, () => console.log(`SYCO23 control runtime listening on http://${host}:${port}`))
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { scheduler.stop(); watchdog.stop(); void service.stopPipeline().finally(() => server.close(() => process.exit(0))) })
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { scheduler.stop(); watchdog.stop(); metadata.stop(); void service.stopPipeline().finally(() => server.close(() => process.exit(0))) })
 }
 
 main().catch((error) => { console.error(error); process.exit(1) })

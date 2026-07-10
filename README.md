@@ -374,3 +374,14 @@ The scheduler executes due jobs once per second and persists completion, retry d
 The control runtime monitors FFmpeg progress rather than process existence alone. A live pipeline that stops emitting progress, exits unexpectedly, or enters a failed state is restarted with exponential backoff. After the configured restart budget is exhausted, destinations enter `cooldown`, the active stream is closed, and a persistent critical incident is opened.
 
 Watchdog state is included in `GET /api/status`; persistent events are available from `GET /api/watchdog/events`.
+
+## AzuraCast metadata runtime
+
+Set `SYCO_AZURACAST_URL` and `SYCO_AZURACAST_STATION` to enable station-specific polling. The runtime persists every successful snapshot, retains the last valid data through temporary outages, uses abort timeouts and exponential backoff, and publishes metadata changes over the runtime event stream.
+
+Endpoints:
+
+- `GET /api/metadata`
+- `GET /api/metadata/stats`
+- `GET /api/metadata/health`
+- `POST /api/metadata/refresh` (operator)
