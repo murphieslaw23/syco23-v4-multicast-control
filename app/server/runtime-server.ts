@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createReadStream, existsSync } from 'node:fs'
-import { mkdir, readFile, stat } from 'node:fs/promises'
+import { mkdir, readFile, readdir, stat, unlink } from 'node:fs/promises'
 import { dirname, extname, join, normalize, resolve } from 'node:path'
 import { WebSocketServer } from 'ws'
 import { PersistentDatabase } from './persistent-db'
@@ -8,6 +8,8 @@ import { RuntimeEventBus } from './runtime/event-bus'
 import { ControlService } from './runtime/control-service'
 import { OperationsStore, type Role, type ScheduleJob } from './runtime/operations'
 import { SchedulerRuntime } from './runtime/scheduler'
+import { ApiError, asApiError } from './runtime/errors'
+import { WebSocketTicketStore } from './runtime/ws-tickets'
 import type { DestinationState, OutputProfile } from '../types'
 
 const port = Number(process.env.PORT || 3000)
@@ -18,12 +20,14 @@ const events = new RuntimeEventBus()
 const service = new ControlService(persistence, events)
 const operations = new OperationsStore(persistence, events)
 const scheduler = new SchedulerRuntime(operations, service, events)
+const wsTickets = new WebSocketTicketStore()
+const backupRoot = resolve(process.env.SYCO_BACKUP_DIR || join(process.cwd(), 'data/backups'))
 
 interface AuthContext { actor: string; role: Role }
 const rank: Record<Role, number> = { viewer: 0, operator: 1, admin: 2 }
 
-function json(response: ServerResponse, status: number, data: unknown): void {
-  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' })
+function json(response: ServerResponse, status: number, data: unknown, requestId?: string): void {
+  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', ...(requestId ? { 'x-request-id': requestId } : {}) })
   response.end(status === 204 ? undefined : JSON.stringify(data))
 }
 
@@ -82,13 +86,20 @@ async function audited<T>(context: AuthContext, action: string, resource: string
 }
 
 async function route(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  const requestId = String(request.headers['x-request-id'] || crypto.randomUUID()).slice(0, 128)
+  response.setHeader('x-request-id', requestId)
   const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`)
   if (!url.pathname.startsWith('/api/')) return serveStatic(request, response)
-  if (request.method === 'GET' && url.pathname === '/api/health') return json(response, 200, { ok: true, uptime: process.uptime(), timestamp: new Date().toISOString() })
+  if (request.method === 'GET' && url.pathname === '/api/health') return json(response, 200, { ok: true, data: { live: true, uptime: process.uptime(), timestamp: new Date().toISOString() } }, requestId)
+  if (request.method === 'GET' && url.pathname === '/api/health/ready') {
+    try { persistence.database.exec('SELECT 1'); return json(response, 200, { ok: true, data: { ready: true, database: 'ok', ffmpeg: service.process.snapshot().state } }, requestId) }
+    catch (error) { return json(response, 503, { ok: false, error: { code: 'NOT_READY', message: error instanceof Error ? error.message : String(error), requestId } }, requestId) }
+  }
   const context = auth(request)
-  if (!context) return json(response, 401, { ok: false, error: 'Unauthorized' })
+  if (!context) return json(response, 401, { ok: false, error: { code: 'UNAUTHORIZED', message: 'Unauthorized', requestId } }, requestId)
   try {
     if (request.method === 'GET' && url.pathname === '/api/me') return json(response, 200, { ok: true, data: context })
+    if (request.method === 'POST' && url.pathname === '/api/events/ticket') return json(response, 201, { ok: true, data: wsTickets.issue(context) }, requestId)
     if (request.method === 'GET' && url.pathname === '/api/status') return json(response, 200, { ok: true, data: service.status() })
     if (request.method === 'GET' && url.pathname === '/api/events') return json(response, 200, { ok: true, data: events.history(Number(url.searchParams.get('limit') || 100)) })
     if (request.method === 'GET' && url.pathname === '/api/logs') return json(response, 200, { ok: true, data: service.logs(Number(url.searchParams.get('limit') || 200)) })
@@ -116,36 +127,43 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
     const incidentMatch=url.pathname.match(/^\/api\/incidents\/([^/]+)\/resolve$/)
     if(incidentMatch&&request.method==='POST'){requireRole(context,'operator');const id=decodeURIComponent(incidentMatch[1]);const input=await body(request) as {resolution?:string};return json(response,200,{ok:true,data:await audited(context,'resolve','incident',id,()=>operations.resolveIncident(id,input.resolution||''))})}
 
+    if (request.method === 'GET' && url.pathname === '/api/backups') {
+      requireRole(context, 'admin')
+      await mkdir(backupRoot, { recursive: true })
+      const files = (await readdir(backupRoot)).filter(name => /^syco23-[A-Za-z0-9._-]+\.sqlite$/.test(name)).sort().reverse()
+      return json(response, 200, { ok: true, data: files.map(id => ({ id })) }, requestId)
+    }
     if (request.method === 'POST' && url.pathname === '/api/backups') {
       requireRole(context, 'admin')
-      const target=resolve(process.env.SYCO_BACKUP_DIR || join(process.cwd(),'data/backups'),`syco23-${new Date().toISOString().replace(/[:.]/g,'-')}.sqlite`)
-      await mkdir(dirname(target),{recursive:true})
-      const path=await audited(context,'create','backup',null,()=>persistence.backup(target))
-      return json(response,201,{ok:true,data:{path}})
+      const id = `syco23-${new Date().toISOString().replace(/[:.]/g,'-')}.sqlite`
+      await mkdir(backupRoot,{recursive:true})
+      await audited(context,'create','backup',id,()=>persistence.backup(join(backupRoot,id)))
+      return json(response,201,{ok:true,data:{id}},requestId)
     }
     if(request.method==='POST'&&url.pathname==='/api/backups/restore'){
       requireRole(context,'admin')
-      const input=await body(request,50_000_000) as {path?:string}
-      if(!input.path) throw new Error('Backup path is required')
-      const bytes=await readFile(resolve(input.path))
-      await audited(context,'restore','backup',null,()=>persistence.restore(new Uint8Array(bytes)))
+      const input=await body(request) as {id?:string}
+      if(!input.id || !/^syco23-[A-Za-z0-9._-]+\.sqlite$/.test(input.id)) throw new ApiError('BACKUP_ID_INVALID','A valid backup id is required')
+      const bytes=await readFile(join(backupRoot,input.id))
+      if (bytes.length < 16 || bytes.subarray(0,15).toString('utf8') !== 'SQLite format 3') throw new ApiError('BACKUP_FORMAT_INVALID','Backup is not a valid SQLite database')
+      await audited(context,'restore','backup',input.id,()=>persistence.restore(new Uint8Array(bytes)))
       await service.initialize()
-      return json(response,200,{ok:true,data:{restored:true}})
+      return json(response,200,{ok:true,data:{restored:true,id:input.id}},requestId)
     }
     if(request.method==='GET'&&url.pathname==='/api/backups/export'){
       requireRole(context,'admin')
       const path=join(process.cwd(),'data',`.export-${crypto.randomUUID()}.sqlite`)
       await persistence.backup(path)
       const bytes=await readFile(path)
-      response.writeHead(200,{'content-type':'application/vnd.sqlite3','content-disposition':'attachment; filename="syco23.sqlite"','cache-control':'no-store'})
+      await unlink(path).catch(()=>undefined)
+      response.writeHead(200,{'content-type':'application/vnd.sqlite3','content-disposition':'attachment; filename="syco23.sqlite"','cache-control':'no-store','x-request-id':requestId})
       response.end(bytes)
       return
     }
-    return json(response, 404, { ok: false, error: 'Route not found' })
+    return json(response, 404, { ok: false, error: { code: 'ROUTE_NOT_FOUND', message: 'Route not found', requestId } }, requestId)
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    const status = message.startsWith('Forbidden') ? 403 : message.includes('not found') ? 404 : 422
-    return json(response, status, { ok: false, error: message })
+    const apiError = asApiError(error)
+    return json(response, apiError.status, { ok: false, error: { code: apiError.code, message: apiError.message, detail: apiError.detail, requestId } }, requestId)
   }
 }
 
@@ -157,9 +175,8 @@ async function main(): Promise<void> {
   server.on('upgrade', (request, socket, head) => {
     const url=new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`)
     if (url.pathname !== '/api/events/ws') return socket.destroy()
-    const queryToken=url.searchParams.get('token')||''
-    if(queryToken&&!request.headers.authorization) request.headers.authorization=`Bearer ${queryToken}`
-    if (!auth(request)) return socket.destroy()
+    const ticket=url.searchParams.get('ticket')||''
+    if (!wsTickets.consume(ticket)) return socket.destroy()
     sockets.handleUpgrade(request, socket, head, (client) => sockets.emit('connection', client, request))
   })
   sockets.on('connection', (client) => {

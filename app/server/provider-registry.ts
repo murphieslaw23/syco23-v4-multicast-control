@@ -48,7 +48,8 @@ function createRtmpProvider(
     },
     buildOutputUrl(destination, streamKey) {
       const endpoint = destination.endpointUrl.replace(/\/+$/, '')
-      const key = (streamKey ?? destination.streamKeyRef).replace(/^\/+/, '')
+      if (!streamKey?.trim()) throw new Error(`Unresolved stream key for ${destination.label}`)
+      const key = streamKey.trim().replace(/^\/+/, '')
       return `${endpoint}/${key}`
     },
   }

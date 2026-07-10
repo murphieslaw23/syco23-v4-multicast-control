@@ -8,6 +8,9 @@ import { getRuntimeStore, appendRuntimeLog, createRuntimeId } from '../runtime-s
 import { getProviderAdapter } from '../provider-registry'
 import type { PersistentDatabase } from '../persistent-db'
 import type { RuntimeEventBus } from './event-bus'
+import { EnvironmentSecretStore, type SecretStore } from './secret-store'
+import { AsyncCommandLock } from './async-lock'
+import { ApiError } from './errors'
 
 export interface StartPipelineRequest {
   inputUrl: string
@@ -19,7 +22,8 @@ export interface StartPipelineRequest {
 
 export class ControlService {
   readonly process: FfmpegProcessSupervisor
-  constructor(private readonly persistence: PersistentDatabase, readonly events: RuntimeEventBus) {
+  private readonly commandLock = new AsyncCommandLock()
+  constructor(private readonly persistence: PersistentDatabase, readonly events: RuntimeEventBus, private readonly secrets: SecretStore = new EnvironmentSecretStore()) {
     this.process = new FfmpegProcessSupervisor(events)
   }
 
@@ -80,29 +84,39 @@ export class ControlService {
   }
 
   async startPipeline(request: StartPipelineRequest): Promise<ReturnType<FfmpegProcessSupervisor['snapshot']>> {
-    const selected = request.destinationIds?.length
-      ? getRuntimeStore().destinations.filter((item) => request.destinationIds?.includes(item.id))
-      : getRuntimeStore().destinations
-    const command = buildFfmpegFanoutCommand({ inputUrl: request.inputUrl, destinations: selected, profiles: getRuntimeStore().profiles, streamKeys: request.streamKeys, ffmpegPath: request.ffmpegPath })
-    this.process.start(command)
-    const session = { id: createRuntimeId('session'), title: request.title || 'SYCO23 Transmission', startedAt: new Date().toISOString(), stoppedAt: null }
-    await this.persistence.transaction(db => db.run('INSERT INTO streams (id,title,artist,started_at,ended_at,status) VALUES (?,?,?,?,?,?)', [session.id, session.title, '', session.startedAt, null, 'online']))
-    getRuntimeStore().streams.unshift(session)
-    getRuntimeStore().status = { live: true, pipelineHealth: 'ok', ingestStatus: 'connected' }
-    this.log('success', 'pipeline', `Started ${session.title} with ${command.outputCount} output(s)`)
-    return this.process.snapshot()
+    return this.commandLock.run('pipeline.start', async () => {
+      if (!request?.inputUrl?.trim()) throw new ApiError('INPUT_URL_REQUIRED', 'Input URL is required')
+      const selected = request.destinationIds?.length
+        ? getRuntimeStore().destinations.filter((item) => request.destinationIds?.includes(item.id))
+        : getRuntimeStore().destinations
+      if (!selected.length) throw new ApiError('DESTINATION_REQUIRED', 'At least one destination is required')
+      const streamKeys: Record<string, string> = { ...(request.streamKeys || {}) }
+      for (const destination of selected) {
+        if (!streamKeys[destination.streamKeyRef]) streamKeys[destination.streamKeyRef] = await this.secrets.resolve(destination.streamKeyRef)
+      }
+      const command = buildFfmpegFanoutCommand({ inputUrl: request.inputUrl, destinations: selected, profiles: getRuntimeStore().profiles, streamKeys, ffmpegPath: request.ffmpegPath })
+      this.process.start(command)
+      const session = { id: createRuntimeId('session'), title: request.title || 'SYCO23 Transmission', startedAt: new Date().toISOString(), stoppedAt: null }
+      await this.persistence.transaction(db => db.run('INSERT INTO streams (id,title,artist,started_at,ended_at,status) VALUES (?,?,?,?,?,?)', [session.id, session.title, '', session.startedAt, null, 'online']))
+      getRuntimeStore().streams.unshift(session)
+      getRuntimeStore().status = { live: true, pipelineHealth: 'ok', ingestStatus: 'connected' }
+      this.log('success', 'pipeline', `Started ${session.title} with ${command.outputCount} output(s)`)
+      return this.process.snapshot()
+    })
   }
 
   async stopPipeline(): Promise<ReturnType<FfmpegProcessSupervisor['snapshot']>> {
-    await this.process.stop()
-    const active = getRuntimeStore().streams.find((item) => item.stoppedAt === null)
-    if (active) {
-      active.stoppedAt = new Date().toISOString()
-      await this.persistence.transaction(db => updateStream(db, active.id, { endedAt: active.stoppedAt, status: 'offline' }))
-    }
-    getRuntimeStore().status = { live: false, pipelineHealth: 'ok', ingestStatus: 'idle' }
-    this.log('info', 'pipeline', 'Pipeline stopped')
-    return this.process.snapshot()
+    return this.commandLock.run('pipeline.stop', async () => {
+      await this.process.stop()
+      const active = getRuntimeStore().streams.find((item) => item.stoppedAt === null)
+      if (active) {
+        active.stoppedAt = new Date().toISOString()
+        await this.persistence.transaction(db => updateStream(db, active.id, { endedAt: active.stoppedAt, status: 'offline' }))
+      }
+      getRuntimeStore().status = { live: false, pipelineHealth: 'ok', ingestStatus: 'idle' }
+      this.log('info', 'pipeline', 'Pipeline stopped')
+      return this.process.snapshot()
+    })
   }
 
   status() {
