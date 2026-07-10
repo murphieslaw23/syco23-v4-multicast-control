@@ -1,4 +1,4 @@
-import type { DestinationState, OutputProfile, Provider, SceneGraph, Template } from '../types'
+import type { DestinationState, OutputProfile, Provider, SceneGraph, Template, TransmissionKit } from '../contracts/domain'
 import type { PipelineConfig, PipelineStatus } from '../composables/usePipeline'
 
 export interface ApiFailure { code: string; message: string; requestId?: string }
@@ -95,6 +95,10 @@ export const runtimeApi = {
   status: () => request<RuntimeStatus>('/api/status'),
   destinations: () => request<DestinationState[]>('/api/destinations'),
   profiles: () => request<OutputProfile[]>('/api/profiles'),
+  transmissionKits: () => request<{items:TransmissionKit[];total:number}>('/api/transmission-kits'),
+  generateTransmissionKit: (input: {destinationId:string;templateId?:string;title?:string;artist?:string;show?:string;publicUrl?:string}) => request<TransmissionKit>('/api/transmission-kits/generate',{method:'POST',body:JSON.stringify(input)}),
+  updateTransmissionKit: (id:string,patch:Partial<Pick<TransmissionKit,'titleBlock'|'descriptionBlock'|'metadata'|'labels'|'launchNotes'>>) => request<TransmissionKit>(`/api/transmission-kits/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(patch)}),
+  deleteTransmissionKit: (id:string) => request<void>(`/api/transmission-kits/${encodeURIComponent(id)}`,{method:'DELETE'}),
   templates: () => request<Template[]>('/api/templates'),
   createTemplate: (input: { name: string; provider: Provider; scene: SceneGraph; isCustom?: boolean }) => request<Template>('/api/templates', { method: 'POST', body: JSON.stringify(input) }),
   updateTemplate: (id: string, patch: Partial<Pick<Template, 'name' | 'provider' | 'scene'>>, version?:number) => request<Template>(`/api/templates/${encodeURIComponent(id)}`, { method: 'PATCH', headers: version ? { 'if-match': `"${version}"` } : undefined, body: JSON.stringify(patch) }),

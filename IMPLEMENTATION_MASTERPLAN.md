@@ -76,3 +76,10 @@ Work is organized as six independently reviewable workstreams. Each produces sma
 ## Definition of done
 
 A capability is complete only when its normal path, rejection path, restart recovery, authorization, persistence, audit record, metrics, documentation and automated tests are implemented.
+
+## Current audit checkpoint — 2026-07-10
+
+- M1–M5: implemented with remaining formal release evidence and full-resource concurrency work.
+- M6: provider constraints, probes, metadata publishing and persisted transmission-kit generation implemented.
+- M7: pending architecture decision for native SQLite/WAL versus external durable database, route/composition split, SBOM/image signing, restore and rolling-upgrade drills.
+- Detailed story and architecture findings: `docs/ARCHITECTURE_AUDIT_2026-07-10.md`.

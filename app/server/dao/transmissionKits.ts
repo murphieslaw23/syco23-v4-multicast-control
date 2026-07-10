@@ -1,5 +1,5 @@
 import type { SqlJsDatabase } from '../db'
-import type { TransmissionKit, Provider } from '../../types/index'
+import type { TransmissionKit, Provider, Template } from '../../contracts/domain'
 
 export function insertKit(db: SqlJsDatabase, kit: TransmissionKit): void {
   db.run(
@@ -55,14 +55,63 @@ function rowToKit(row: unknown[]): TransmissionKit {
   }
 }
 
-export function generateKit(destinationId: string, provider: Provider): TransmissionKit {
+export interface GenerateTransmissionKitInput {
+  destinationId: string
+  provider: Provider
+  destinationLabel?: string
+  template?: Pick<Template, 'id' | 'name' | 'provider'> | null
+  title?: string
+  artist?: string
+  show?: string
+  publicUrl?: string
+}
+
+const providerCopy: Record<Provider, { labels: string[]; launchNotes: string }> = {
+  youtube: { labels: ['youtube', 'livestream', 'syco23'], launchNotes: 'Verify the YouTube control-room preview, latency mode, category, thumbnail, and public visibility before arming.' },
+  telegram: { labels: ['telegram', 'vertical', 'syco23'], launchNotes: 'Confirm the Telegram destination supports the selected orientation and publish the listener access message after provider acknowledgement.' },
+  tiktok: { labels: ['tiktok', 'vertical', 'syco23'], launchNotes: 'Confirm mobile-safe framing, platform eligibility, and the live preview before publishing.' },
+  twitch: { labels: ['twitch', 'live', 'syco23'], launchNotes: 'Confirm category, title, moderation state, and playback acknowledgement before announcing the transmission.' },
+  instagram: { labels: ['instagram', 'vertical', 'syco23'], launchNotes: 'Confirm portrait framing and platform-side live readiness; Instagram may require manual setup.' },
+  mixer: { labels: ['mixer', 'legacy', 'syco23'], launchNotes: 'This provider is retained for compatibility. Verify the endpoint is active before arming.' },
+  mixcloud: { labels: ['mixcloud', 'live', 'syco23'], launchNotes: 'Confirm Mixcloud Live title, rights metadata, and playback acknowledgement.' },
+  facebook: { labels: ['facebook', 'live', 'syco23'], launchNotes: 'Confirm destination page, visibility, title, and provider acknowledgement before publishing.' },
+  'custom-rtmp': { labels: ['rtmp', 'live', 'syco23'], launchNotes: 'Verify the custom RTMP endpoint, secret reference, codec profile, and public playback URL.' },
+  local: { labels: ['local', 'preview', 'syco23'], launchNotes: 'Use this kit for local validation only; no external provider acknowledgement is expected.' },
+}
+
+export function generateKit(input: GenerateTransmissionKitInput): TransmissionKit {
+  const title = input.title?.trim() || input.show?.trim() || 'SYSTEM CORRUPT — LIVE TRANSMISSION'
+  const artistLine = input.artist?.trim() ? ` — ${input.artist.trim()}` : ''
+  const provider = input.provider
+  const templateName = input.template?.name || 'Default SYCO23 scene'
+  const destination = input.destinationLabel || input.destinationId
+  const publicLine = input.publicUrl ? `
+
+Listen / watch: ${input.publicUrl}` : ''
+  const descriptionBlock = [
+    `${title}${artistLine}`,
+    '',
+    `SYSTEM CORRUPT / SYCO23 live transmission to ${destination}.`,
+    `Visual format: ${templateName}.`,
+    publicLine,
+    '',
+    'Underground radio. Freetekno signal. No commercial interruption.',
+  ].filter((line, index, lines) => line !== '' || (index > 0 && lines[index - 1] !== '')).join('\n')
+
   return {
     id: crypto.randomUUID(),
-    destinationId,
-    titleBlock: `[${provider.toUpperCase()}] Show Title`,
-    descriptionBlock: 'Generated for transmission.',
-    metadata: { provider, generatedAt: new Date().toISOString() },
-    labels: [provider, 'live'],
-    launchNotes: 'Review endpoint and key before arming.',
+    destinationId: input.destinationId,
+    titleBlock: `[SYCO23] ${title}`,
+    descriptionBlock,
+    metadata: {
+      provider,
+      templateId: input.template?.id || '',
+      templateName,
+      show: input.show || '',
+      artist: input.artist || '',
+      generatedAt: new Date().toISOString(),
+    },
+    labels: providerCopy[provider].labels,
+    launchNotes: providerCopy[provider].launchNotes,
   }
 }

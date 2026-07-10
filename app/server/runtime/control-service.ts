@@ -1,4 +1,4 @@
-import type { DestinationState, OutputProfile, SceneGraph, Template } from "../../types";
+import type { DestinationState, OutputProfile, SceneGraph, Template, TransmissionKit } from "../../contracts/domain";
 import { buildFfmpegFanoutCommand } from "../ffmpeg/command-builder";
 import { DestinationWorkerManager } from "../ffmpeg/destination-worker-manager";
 import {
@@ -12,6 +12,7 @@ import { deleteTemplate, getAllTemplates, getTemplateById, insertTemplate, updat
 import { validateScene } from "../scene/scene-runtime";
 import { getAssetById } from "../dao/userAssets";
 import { getAllStreams, updateStream } from "../dao/streams";
+import { deleteKit, generateKit, getAllKits, getKitById, insertKit, updateKit } from "../dao/transmissionKits";
 import {
   getRuntimeStore,
   appendRuntimeLog,
@@ -90,6 +91,54 @@ export class ControlService {
     return structuredClone(getRuntimeStore().profiles);
   }
   listTemplates(): Template[] { return structuredClone(getRuntimeStore().templates); }
+  listTransmissionKits(): TransmissionKit[] { return structuredClone(getAllKits(this.persistence.database)); }
+  getTransmissionKit(id: string): TransmissionKit {
+    const kit = getKitById(this.persistence.database, id);
+    if (!kit) throw new ApiError("TRANSMISSION_KIT_NOT_FOUND", "Transmission kit not found", 404);
+    return structuredClone(kit);
+  }
+  async generateTransmissionKit(input: { destinationId: string; templateId?: string; title?: string; artist?: string; show?: string; publicUrl?: string }): Promise<TransmissionKit> {
+    const destination = getRuntimeStore().destinations.find((item) => item.id === input.destinationId);
+    if (!destination) throw new ApiError("DESTINATION_NOT_FOUND", "Destination not found", 404);
+    const template = input.templateId ? this.getTemplate(input.templateId) : null;
+    if (template && template.provider !== destination.provider && template.provider !== "custom-rtmp") {
+      throw new ApiError("TEMPLATE_PROVIDER_MISMATCH", `Template ${template.name} is not valid for ${destination.provider}`, 422);
+    }
+    const kit = generateKit({
+      ...input,
+      provider: destination.provider,
+      destinationLabel: destination.label,
+      template,
+      title: input.title || getRuntimeStore().metadata.title,
+      artist: input.artist || getRuntimeStore().metadata.artist,
+      show: input.show || getRuntimeStore().metadata.show || undefined,
+    });
+    await this.persistence.transaction((db) => {
+      insertKit(db, kit);
+      updateDestination(db, destination.id, { transmissionKitId: kit.id });
+    });
+    destination.transmissionKitId = kit.id;
+    this.events.publish("transmission-kit.generated", kit);
+    this.log("success", "transmission-kit", `Generated ${destination.provider} kit for ${destination.label}`);
+    return structuredClone(kit);
+  }
+  async patchTransmissionKit(id: string, patch: Partial<Pick<TransmissionKit, "titleBlock" | "descriptionBlock" | "metadata" | "labels" | "launchNotes">>): Promise<TransmissionKit> {
+    this.getTransmissionKit(id);
+    await this.persistence.transaction((db) => updateKit(db, id, patch));
+    const kit = this.getTransmissionKit(id);
+    this.events.publish("transmission-kit.updated", kit);
+    return kit;
+  }
+  async removeTransmissionKit(id: string): Promise<void> {
+    const kit = this.getTransmissionKit(id);
+    await this.persistence.transaction((db) => {
+      deleteKit(db, id);
+      updateDestination(db, kit.destinationId, { transmissionKitId: null });
+    });
+    const destination = getRuntimeStore().destinations.find((item) => item.id === kit.destinationId);
+    if (destination?.transmissionKitId === id) destination.transmissionKitId = null;
+    this.events.publish("transmission-kit.deleted", { id, destinationId: kit.destinationId });
+  }
   getTemplate(id: string): Template {
     const template = getTemplateById(this.persistence.database, id);
     if (!template) throw new ApiError("TEMPLATE_NOT_FOUND", "Template not found", 404);

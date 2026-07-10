@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { updateSycoAppState } from '../../composables/store'
 import type { DestinationState, Provider } from '../../types/index'
 
@@ -347,26 +347,35 @@ describe('composables/useTemplates', () => {
 })
 
 describe('composables/useTransmissionKit', () => {
+  beforeEach(async () => {
+    vi.restoreAllMocks()
+    const { useTransmissionKit } = await import('../../composables/useTransmissionKit')
+    useTransmissionKit().reset()
+  })
+
   it('starts with null current kit', async () => {
     const { useTransmissionKit } = await import('../../composables/useTransmissionKit')
     const { current } = useTransmissionKit()
     expect(current.value).toBeNull()
   })
 
-  it('generates a kit for a destination', async () => {
+  it('generates and persists a kit for a destination', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true, data: {
+      id: 'kit-1', destinationId: 'dest-1', titleBlock: '[SYCO23] LIVE', descriptionBlock: 'Generated',
+      metadata: { provider: 'youtube' }, labels: ['youtube', 'live'], launchNotes: 'Verify provider acknowledgement.'
+    }}), { status: 201, headers: { 'content-type': 'application/json' } })))
     const { useTransmissionKit } = await import('../../composables/useTransmissionKit')
     const { current, generate } = useTransmissionKit()
-    const kit = generate('dest-1', 'youtube')
-    expect(current.value).not.toBeNull()
+    const kit = await generate({ destinationId: 'dest-1', templateId: 'template-1' })
+    expect(current.value?.id).toBe('kit-1')
     expect(kit.destinationId).toBe('dest-1')
-    expect(kit.titleBlock).toContain('YOUTUBE')
     expect(kit.labels).toContain('youtube')
+    expect(fetch).toHaveBeenCalledWith('/api/transmission-kits/generate', expect.objectContaining({ method: 'POST' }))
   })
 
   it('resets the current kit', async () => {
     const { useTransmissionKit } = await import('../../composables/useTransmissionKit')
-    const { generate, reset, current } = useTransmissionKit()
-    generate('dest-1', 'youtube')
+    const { reset, current } = useTransmissionKit()
     reset()
     expect(current.value).toBeNull()
   })

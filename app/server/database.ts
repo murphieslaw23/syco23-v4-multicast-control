@@ -181,7 +181,7 @@ class DatabaseImpl implements Database {
     insert: (kit: TransmissionKit) => txKitsDao.insertKit(this.getDb(), kit),
     update: (id: string, patch: Partial<TransmissionKit>) => txKitsDao.updateKit(this.getDb(), id, patch),
     delete: (id: string) => txKitsDao.deleteKit(this.getDb(), id),
-    generate: (destinationId: string, provider: Provider) => txKitsDao.generateKit(destinationId, provider),
+    generate: (destinationId: string, provider: Provider) => txKitsDao.generateKit({ destinationId, provider }),
   }
 
   watchdog = {

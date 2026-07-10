@@ -34,7 +34,7 @@ import type {
   OutputProfile,
   SceneGraph,
   Template,
-} from "../types";
+} from "../contracts/domain";
 import { AssetStore, renderSceneSvg } from "./scene/scene-runtime";
 import { listProviderAdapters } from "./provider-registry";
 import { queryLogs, logsToCsv } from "./dao/logs";
@@ -662,6 +662,36 @@ async function route(
         { ok: true, data: service.listTemplates() },
         requestId,
       );
+    if (request.method === "GET" && url.pathname === "/api/transmission-kits") {
+      requireRole(context, "viewer");
+      const items = service.listTransmissionKits();
+      return json(response, 200, { ok: true, data: { items, total: items.length } }, requestId);
+    }
+    if (request.method === "POST" && url.pathname === "/api/transmission-kits/generate") {
+      requireRole(context, "operator");
+      const input = (await body(request)) as import("../contracts/api").GenerateTransmissionKitRequest;
+      if (!String(input.destinationId || "").trim()) throw new ApiError("DESTINATION_REQUIRED", "Destination is required", 422);
+      const data = await audited(context, "generate", "transmission-kit", null, () => service.generateTransmissionKit(input));
+      return json(response, 201, { ok: true, data }, requestId);
+    }
+    const transmissionKitMatch = url.pathname.match(/^\/api\/transmission-kits\/([^/]+)$/);
+    if (transmissionKitMatch && request.method === "GET") {
+      requireRole(context, "viewer");
+      return json(response, 200, { ok: true, data: service.getTransmissionKit(decodeURIComponent(transmissionKitMatch[1])) }, requestId);
+    }
+    if (transmissionKitMatch && request.method === "PATCH") {
+      requireRole(context, "operator");
+      const id = decodeURIComponent(transmissionKitMatch[1]);
+      const patch = (await body(request)) as Partial<Pick<import("../contracts/domain").TransmissionKit, "titleBlock" | "descriptionBlock" | "metadata" | "labels" | "launchNotes">>;
+      const data = await audited(context, "update", "transmission-kit", id, () => service.patchTransmissionKit(id, patch));
+      return json(response, 200, { ok: true, data }, requestId);
+    }
+    if (transmissionKitMatch && request.method === "DELETE") {
+      requireRole(context, "operator");
+      const id = decodeURIComponent(transmissionKitMatch[1]);
+      await audited(context, "delete", "transmission-kit", id, () => service.removeTransmissionKit(id));
+      return json(response, 204, null, requestId);
+    }
     if (request.method === "POST" && url.pathname === "/api/templates") {
       requireRole(context, "admin");
       const input = (await body(request)) as {
