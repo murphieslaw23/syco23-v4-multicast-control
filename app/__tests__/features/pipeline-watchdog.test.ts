@@ -1,8 +1,17 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { updateSycoAppState } from '../../composables/store'
 
 describe('composables/usePipeline', () => {
+  const destination = { id: 'dst', provider: 'custom-rtmp' as const, label: 'Test', protocol: 'rtmp' as const, endpointUrl: 'rtmp://localhost/live', streamKeyRef: 'TEST_KEY', status: 'configured' as const, health: null, lastHandshakeAt: null, lastError: null, videoProfile: '1080p', audioProfile: '128k', monitorMode: 'rtmp-output' as const, requiresManualPlatformSetup: false, capabilities: [], transmissionKitId: null, notes: '' }
   beforeEach(() => {
+    let stopped = false
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/pipeline/stop')) { stopped = true; return new Response(JSON.stringify({ ok: true, data: { state: 'idle' } }), { status: 200, headers: { 'content-type': 'application/json' } }) }
+      if (url.includes('/api/status')) return new Response(JSON.stringify({ ok: true, data: { live: !stopped, pipelineHealth: 'ok', ingestStatus: stopped ? 'idle' : 'connected', destinations: 1, supervisor: { state: stopped ? 'idle' : 'running', pid: 10, startedAt: new Date().toISOString(), restartCount: 0, lastError: null, metrics: { fps: 30, bitrateKbps: 4500, outTimeMs: 1000 } } } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      stopped = false
+      return new Response(JSON.stringify({ ok: true, data: { state: 'running' } }), { status: 202, headers: { 'content-type': 'application/json' } })
+    }))
     updateSycoAppState({
       live: false,
       sessionId: null,
@@ -31,7 +40,7 @@ describe('composables/usePipeline', () => {
     const pipeline = usePipeline()
     await pipeline.start({
       sourceUrl: 'rtmp://x',
-      destinations: [],
+      destinations: [destination],
       videoProfile: '1080p',
       audioProfile: '128k',
     })
@@ -43,7 +52,7 @@ describe('composables/usePipeline', () => {
   it('transitions to idle on stop', async () => {
     const { usePipeline } = await import('../../composables/usePipeline')
     const pipeline = usePipeline()
-    await pipeline.start({ sourceUrl: 'rtmp://x', destinations: [], videoProfile: '1080p', audioProfile: '128k' })
+    await pipeline.start({ sourceUrl: 'rtmp://x', destinations: [destination], videoProfile: '1080p', audioProfile: '128k' })
     await pipeline.stop()
     expect(pipeline.status.value.state).toBe('idle')
     expect(pipeline.isRunning.value).toBe(false)
@@ -53,7 +62,7 @@ describe('composables/usePipeline', () => {
     updateSycoAppState({ sourceUrl: 'rtmp://x' })
     const { usePipeline } = await import('../../composables/usePipeline')
     const pipeline = usePipeline()
-    await pipeline.start({ sourceUrl: 'rtmp://x', destinations: [], videoProfile: '1080p', audioProfile: '128k' })
+    await pipeline.start({ sourceUrl: 'rtmp://x', destinations: [destination], videoProfile: '1080p', audioProfile: '128k' })
     await pipeline.restart()
     expect(pipeline.status.value.state).toBe('running')
   })
@@ -62,7 +71,7 @@ describe('composables/usePipeline', () => {
     updateSycoAppState({ sourceUrl: null })
     const { usePipeline } = await import('../../composables/usePipeline')
     const pipeline = usePipeline()
-    await pipeline.start({ sourceUrl: 'rtmp://x', destinations: [], videoProfile: '1080p', audioProfile: '128k' })
+    await pipeline.start({ sourceUrl: 'rtmp://x', destinations: [destination], videoProfile: '1080p', audioProfile: '128k' })
     await pipeline.restart()
     expect(pipeline.status.value.state).toBe('running')
   })

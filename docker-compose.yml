@@ -6,13 +6,25 @@ services:
     image: syco23/multicast-control:local
     container_name: syco23-multicast-control
     restart: unless-stopped
+    init: true
     ports:
-      - "8080:80"
+      - "8080:3000"
     environment:
       NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      SYCO_DB_PATH: /app/data/syco23.sqlite
+      SYCO_API_TOKEN: ${SYCO_API_TOKEN:-}
+    volumes:
+      - syco23-data:/app/data
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  syco23-data:
