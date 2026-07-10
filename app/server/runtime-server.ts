@@ -4,7 +4,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import { createReadStream, existsSync } from "node:fs";
-import { mkdir, readFile, readdir, stat, unlink } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, stat, unlink } from "node:fs/promises";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { WebSocketServer } from "ws";
 import { PersistentDatabase } from "./persistent-db";
@@ -29,6 +29,9 @@ import { queryLogs, logsToCsv } from "./dao/logs";
 import { SystemTelemetry } from "./runtime/system-telemetry";
 import { EnvironmentSecretStore } from "./runtime/secret-store";
 import { ProviderMonitorRuntime } from "./runtime/provider-monitor-runtime";
+import { RetentionRuntime } from "./runtime/retention-runtime";
+import { IdempotencyStore } from "./runtime/idempotency-store";
+import { insertLog } from "./dao/logs";
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "0.0.0.0";
@@ -77,6 +80,17 @@ const telemetry = new SystemTelemetry(resolve(process.env.SYCO_DATA_DIR || join(
 const backupRoot = resolve(
   process.env.SYCO_BACKUP_DIR || join(process.cwd(), "data/backups"),
 );
+const idempotency = new IdempotencyStore(Number(process.env.SYCO_IDEMPOTENCY_TTL_MS || 300000));
+const retention = new RetentionRuntime(persistence, events, {
+  intervalMs: Number(process.env.SYCO_RETENTION_INTERVAL_MS || 3600000),
+  logsDays: Number(process.env.SYCO_RETENTION_LOG_DAYS || 30),
+  auditDays: Number(process.env.SYCO_RETENTION_AUDIT_DAYS || 365),
+  incidentsDays: Number(process.env.SYCO_RETENTION_INCIDENT_DAYS || 180),
+  metadataDays: Number(process.env.SYCO_RETENTION_METADATA_DAYS || 30),
+  workerEventsDays: Number(process.env.SYCO_RETENTION_WORKER_EVENT_DAYS || 30),
+  providerEventsDays: Number(process.env.SYCO_RETENTION_PROVIDER_EVENT_DAYS || 30),
+  watchdogEventsDays: Number(process.env.SYCO_RETENTION_WATCHDOG_EVENT_DAYS || 90),
+});
 
 interface AuthContext {
   actor: string;
@@ -275,36 +289,22 @@ async function route(
       requestId,
     );
   if (request.method === "GET" && url.pathname === "/api/health/ready") {
-    try {
-      persistence.database.exec("SELECT 1");
-      return json(
-        response,
-        200,
-        {
-          ok: true,
-          data: {
-            ready: true,
-            database: "ok",
-            ffmpeg: service.workers.aggregateSnapshot().state,
-          },
-        },
-        requestId,
-      );
-    } catch (error) {
-      return json(
-        response,
-        503,
-        {
-          ok: false,
-          error: {
-            code: "NOT_READY",
-            message: error instanceof Error ? error.message : String(error),
-            requestId,
-          },
-        },
-        requestId,
-      );
-    }
+    const checks: Record<string, { ok: boolean; detail?: string }> = {};
+    try { persistence.database.exec("SELECT 1"); checks.database = { ok: true }; }
+    catch (error) { checks.database = { ok: false, detail: error instanceof Error ? error.message : String(error) }; }
+    try { await mkdir(dirname(resolve(process.env.SYCO_DB_PATH || join(process.cwd(), "data/syco23.sqlite"))), { recursive: true }); checks.dataDirectory = { ok: true }; }
+    catch (error) { checks.dataDirectory = { ok: false, detail: error instanceof Error ? error.message : String(error) }; }
+    try { await mkdir(backupRoot, { recursive: true }); await access(backupRoot); checks.backupDirectory = { ok: true }; }
+    catch (error) { checks.backupDirectory = { ok: false, detail: error instanceof Error ? error.message : String(error) }; }
+    const ffmpegPath = process.env.SYCO_FFMPEG_PATH || "ffmpeg";
+    checks.ffmpeg = { ok: Boolean(ffmpegPath), detail: ffmpegPath };
+    checks.scheduler = { ok: true };
+    checks.watchdog = { ok: watchdog.snapshot().running };
+    checks.metadata = { ok: metadata.snapshot().health.status !== "failed", detail: metadata.snapshot().health.status };
+    const ready = Object.values(checks).every((check) => check.ok);
+    return json(response, ready ? 200 : 503, ready
+      ? { ok: true, data: { ready, checks } }
+      : { ok: false, error: { code: "NOT_READY", message: "One or more dependencies are not ready", detail: checks, requestId } }, requestId);
   }
   const context = auth(request);
   if (!context)
@@ -426,6 +426,19 @@ async function route(
       const id = decodeURIComponent(providerEventsMatch[1]);
       const rows = persistence.database.exec('SELECT id,destination_id,timestamp,event_type,state,message,detail FROM provider_monitor_events WHERE destination_id=? ORDER BY timestamp DESC LIMIT 200', [id]);
       const data = rows[0]?.values.map(row => ({ id:String(row[0]), destinationId:String(row[1]), timestamp:String(row[2]), eventType:String(row[3]), state:String(row[4]), message:row[5] == null ? null : String(row[5]), detail:JSON.parse(String(row[6] || '{}')) })) || [];
+      return json(response, 200, { ok: true, data }, requestId);
+    }
+    if (request.method === "GET" && url.pathname === "/api/retention") {
+      requireRole(context, "admin");
+      return json(response, 200, { ok: true, data: {
+        intervalMs: Number(process.env.SYCO_RETENTION_INTERVAL_MS || 3600000),
+        logDays: Number(process.env.SYCO_RETENTION_LOG_DAYS || 30),
+        auditDays: Number(process.env.SYCO_RETENTION_AUDIT_DAYS || 365),
+      } }, requestId);
+    }
+    if (request.method === "POST" && url.pathname === "/api/retention/run") {
+      requireRole(context, "admin");
+      const data = await audited(context, "run", "retention", null, () => retention.run());
       return json(response, 200, { ok: true, data }, requestId);
     }
     if (request.method === "GET" && url.pathname === "/api/providers")
@@ -616,6 +629,8 @@ async function route(
 
     if (request.method === "POST" && url.pathname === "/api/pipeline/start") {
       requireRole(context, "operator");
+      const key = String(request.headers["idempotency-key"] || "").slice(0, 200);
+      if (key) { const cached = idempotency.get<unknown>("pipeline.start", key); if (cached) return json(response, 202, { ok: true, data: cached }, requestId); }
       const input = (await body(request)) as { inputUrl: string; destinationIds?: string[]; title?: string; ffmpegPath?: string; templateId?: string };
       const data = await audited(context, "start", "pipeline", null, async () => {
         const result = await service.startPipeline(input);
@@ -627,16 +642,20 @@ async function route(
         }
         return result;
       });
+      if (key) idempotency.set("pipeline.start", key, data);
       return json(response, 202, { ok: true, data }, requestId);
     }
     if (request.method === "POST" && url.pathname === "/api/pipeline/stop") {
       requireRole(context, "operator");
+      const key = String(request.headers["idempotency-key"] || "").slice(0, 200);
+      if (key) { const cached = idempotency.get<unknown>("pipeline.stop", key); if (cached) return json(response, 200, { ok: true, data: cached }, requestId); }
       const data = await audited(context, "stop", "pipeline", null, async () => {
         const result = await service.stopPipeline();
         await preview.stop();
         await preview.cleanup();
         return result;
       });
+      if (key) idempotency.set("pipeline.stop", key, data);
       return json(response, 200, { ok: true, data }, requestId);
     }
 
@@ -814,10 +833,19 @@ async function main(): Promise<void> {
   watchdog.start();
   metadata.start();
   providerMonitor.start();
+  retention.start();
   events.subscribe((event) => { if (event.type === "metadata.updated") providerMonitor.scheduleMetadataPublish(event.payload as Record<string, unknown>); });
-  const server = createServer(
-    (request, response) => void route(request, response),
-  );
+  const server = createServer((request, response) => {
+    const started = process.hrtime.bigint();
+    response.once("finish", () => {
+      if (!request.url?.startsWith("/api/")) return;
+      const durationMs = Number(process.hrtime.bigint() - started) / 1e6;
+      const path = new URL(request.url, `http://${request.headers.host || "localhost"}`).pathname;
+      const level = response.statusCode >= 500 ? "error" : response.statusCode >= 400 ? "warning" : "info";
+      void persistence.transaction((db) => insertLog(db, { level, source: "http", message: `${request.method || "GET"} ${path} ${response.statusCode} ${durationMs.toFixed(1)}ms requestId=${String(response.getHeader("x-request-id") || "")}` }));
+    });
+    void route(request, response);
+  });
   const sockets = new WebSocketServer({ noServer: true });
   server.on("upgrade", (request, socket, head) => {
     const url = new URL(
@@ -853,6 +881,7 @@ async function main(): Promise<void> {
       watchdog.stop();
       metadata.stop();
     providerMonitor.stop();
+      retention.stop();
       telemetry.close();
       sockets.close();
       void Promise.allSettled([service.stopPipeline(), preview.stop()])

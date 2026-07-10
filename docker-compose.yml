@@ -15,14 +15,22 @@ services:
       PORT: 3000
       SYCO_DB_PATH: /app/data/syco23.sqlite
       SYCO_API_TOKEN: ${SYCO_API_TOKEN:-}
+      SYCO_RETENTION_LOG_DAYS: ${SYCO_RETENTION_LOG_DAYS:-30}
+      SYCO_RETENTION_AUDIT_DAYS: ${SYCO_RETENTION_AUDIT_DAYS:-365}
+      SYCO_PROVIDER_PROBE_INTERVAL_MS: ${SYCO_PROVIDER_PROBE_INTERVAL_MS:-15000}
     volumes:
       - syco23-data:/app/data
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health/ready"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
 

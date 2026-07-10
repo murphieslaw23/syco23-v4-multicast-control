@@ -9,6 +9,10 @@ export interface ScheduleJob { id:string; name:string; action:'pipeline.start'|'
 export interface Incident { id:string; openedAt:string; closedAt:string|null; severity:'warning'|'critical'; status:'open'|'resolved'; title:string; description:string; source:string; resolution:string|null }
 export interface AuditEntry { id:string; timestamp:string; actor:string; role:string; action:string; resource:string; resourceId:string|null; outcome:string; detail:Record<string,unknown> }
 export interface BackupRecord { id:string }
+export interface ProviderProbeSnapshot { destinationId:string; status:'disabled'|'checking'|'healthy'|'degraded'|'failed'; checkedAt:string|null; latencyMs:number|null; httpStatus:number|null; message:string|null; consecutiveFailures:number }
+export interface ProviderMonitorEvent { id:string; destinationId:string; timestamp:string; eventType:string; state:string; message:string|null; detail:Record<string,unknown> }
+export interface RetentionResult { [table:string]: number }
+export interface SystemMetrics { timestamp:string; uptimeSeconds:number; process:{pid:number;rssBytes:number;heapUsedBytes:number;heapTotalBytes:number}; memory:{totalBytes:number;freeBytes:number;usedPercent:number}; cpu:{cores:number;load1:number;load5:number;load15:number}; disk:{path:string;totalBytes:number;freeBytes:number;usedPercent:number}|null; network:{receivedBytes:number;transmittedBytes:number}|null; eventLoop:{meanMs:number;maxMs:number;p99Ms:number} }
 export interface WorkerSnapshot { id?:string; destinationId?:string; state:string; pid:number|null; health?:string; restartCount:number; lastError:string|null; cooldownUntil?:string|null; metrics?:Record<string,number> }
 interface Envelope<T> { ok: boolean; data?: T; error?: ApiFailure | string }
 
@@ -75,6 +79,11 @@ export const runtimeApi = {
   createBackup: () => request<BackupRecord>('/api/backups',{method:'POST'}),
   restoreBackup: (id:string) => request<{restored:boolean;id:string}>('/api/backups/restore',{method:'POST',body:JSON.stringify({id})}),
   workers: () => request<WorkerSnapshot[]>('/api/destination-workers'),
+  providerMonitor: () => request<ProviderProbeSnapshot[]>('/api/provider-monitor'),
+  probeProviders: (destinationId?:string) => request<ProviderProbeSnapshot[]>('/api/provider-monitor/probe',{method:'POST',body:JSON.stringify(destinationId?{destinationId}:{})}),
+  providerMonitorEvents: (destinationId:string) => request<ProviderMonitorEvent[]>(`/api/provider-monitor/${encodeURIComponent(destinationId)}/events`),
+  systemMetrics: () => request<SystemMetrics>('/api/system/metrics'),
+  runRetention: () => request<RetentionResult>('/api/retention/run',{method:'POST'}),
   createDestination: (input: DestinationState) => request<DestinationState>('/api/destinations',{method:'POST',body:JSON.stringify(input)}),
   updateDestination: (id:string,patch:Partial<DestinationState>) => request<DestinationState>(`/api/destinations/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(patch)}),
   deleteDestination: (id:string) => request<void>(`/api/destinations/${encodeURIComponent(id)}`,{method:'DELETE'}),
@@ -92,9 +101,10 @@ export const runtimeApi = {
   previewTicket: () => request<{ ticket: string; expiresAt: string }>('/api/preview/ticket', { method: 'POST' }),
   startPipeline: (config: PipelineConfig) => request<RuntimeStatus['supervisor']>('/api/pipeline/start', {
     method: 'POST',
+    headers: { 'idempotency-key': crypto.randomUUID() },
     body: JSON.stringify({ inputUrl: config.sourceUrl, destinationIds: config.destinations.map((item) => item.id), title: 'SYCO23 Transmission', templateId: config.templateId || undefined }),
   }),
-  stopPipeline: () => request<RuntimeStatus['supervisor']>('/api/pipeline/stop', { method: 'POST' }),
+  stopPipeline: () => request<RuntimeStatus['supervisor']>('/api/pipeline/stop', { method: 'POST', headers: { 'idempotency-key': crypto.randomUUID() } }),
 }
 
 export function connectRuntimeEvents(onEvent: (event: { type: string; payload: unknown; timestamp: string }) => void): () => void {

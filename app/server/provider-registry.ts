@@ -143,7 +143,7 @@ function createRtmpProvider(
           return { live, httpStatus: response.status, message: live ? 'Playback manifest is active' : 'Playback manifest is not active' }
         }
         let value: unknown = body
-        try { value = JSON.parse(body) } catch {}
+        try { value = JSON.parse(body) } catch { value = body }
         const record = typeof value === 'object' && value ? value as Record<string,unknown> : {}
         const state = String(record.status ?? record.state ?? record.stream_status ?? record.live ?? '').toLowerCase()
         const live = record.live === true || ['live','online','active','streaming','ready'].includes(state)

@@ -27,6 +27,6 @@ export function getAllTemplates(db:SqlJsDatabase):Template[] { const r=db.exec('
 export function getTemplatesByProvider(db:SqlJsDatabase,provider:string):Template[] { const r=db.exec('SELECT * FROM templates WHERE provider=? ORDER BY updated_at DESC',[provider]); return r[0]?.values.map(rowToTemplate) ?? [] }
 function rowToTemplate(row:unknown[]):Template {
   let scene=DEFAULT_SCENE
-  try { const parsed=JSON.parse(String(row[6] || '{}')); if (parsed && Number(parsed.width)>0 && Array.isArray(parsed.layers)) scene=parsed } catch {}
+  try { const parsed=JSON.parse(String(row[6] || '{}')); if (parsed && Number(parsed.width)>0 && Array.isArray(parsed.layers)) scene=parsed } catch { scene=DEFAULT_SCENE }
   return { id:String(row[0]), name:String(row[1]), provider:row[2] as Template['provider'], previewUrl:String(row[3]||''), isCustom:Number(row[4])===1, customBackgroundRef:row[5] ? String(row[5]) : undefined, scene, version:Number(row[7]||1), createdAt:String(row[8]||''), updatedAt:String(row[9]||'') }
 }

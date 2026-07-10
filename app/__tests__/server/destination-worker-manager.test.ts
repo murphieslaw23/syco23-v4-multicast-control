@@ -50,7 +50,7 @@ describe("DestinationWorkerManager", () => {
     const executable = join(directory, "fake-ffmpeg.sh");
     await writeFile(
       executable,
-      `#!/bin/sh\ncase \"$*\" in *fail-key*) exit 2;; esac\necho frame=1\necho fps=25\necho bitrate=500.0kbits/s\necho progress=continue\nsleep 5\n`,
+      `#!/bin/sh\ncase "$*" in *fail-key*) exit 2;; esac\necho frame=1\necho fps=25\necho bitrate=500.0kbits/s\necho progress=continue\nsleep 5\n`,
     );
     await chmod(executable, 0o755);
     const events = new RuntimeEventBus();

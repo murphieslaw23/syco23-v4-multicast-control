@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { runtimeApi, type AuditEntry, type BackupRecord, type CurrentUser, type Incident, type RuntimeLog, type RuntimeSession, type ScheduleJob, type WorkerSnapshot } from '../services/runtime-api'
+import { runtimeApi, type AuditEntry, type BackupRecord, type CurrentUser, type Incident, type ProviderProbeSnapshot, type RuntimeLog, type RuntimeSession, type ScheduleJob, type SystemMetrics, type WorkerSnapshot } from '../services/runtime-api'
 import type { AppRoute } from '../composables/useAppRouter'
 import type { DestinationState, Provider } from '../types'
 
@@ -16,11 +16,14 @@ const audit = ref<AuditEntry[]>([])
 const backups = ref<BackupRecord[]>([])
 const workers = ref<WorkerSnapshot[]>([])
 const destinations = ref<DestinationState[]>([])
+const providerProbes = ref<ProviderProbeSnapshot[]>([])
+const systemMetrics = ref<SystemMetrics|null>(null)
+const retentionResult = ref<Record<string,number>|null>(null)
 const search = ref('')
 const level = ref('all')
 const resolution = ref<Record<string,string>>({})
 const newSchedule = ref({ name:'', action:'pipeline.stop' as ScheduleJob['action'], runAt:new Date(Date.now()+3600000).toISOString().slice(0,16), recurrenceMinutes:'' })
-const destinationDraft = ref<DestinationState>({id:'',provider:'custom-rtmp',label:'',protocol:'rtmps',endpointUrl:'',streamKeyRef:'',status:'configured',health:null,lastHandshakeAt:null,lastError:null,videoProfile:'default',audioProfile:'default',monitorMode:'rtmp-output',requiresManualPlatformSetup:false,capabilities:[],transmissionKitId:null,notes:''})
+const destinationDraft = ref<DestinationState>({id:'',provider:'custom-rtmp',label:'',protocol:'rtmps',endpointUrl:'',streamKeyRef:'',status:'configured',health:null,lastHandshakeAt:null,lastError:null,videoProfile:'default',audioProfile:'default',monitorMode:'rtmp-output',hlsPlaybackUrl:'',providerAckUrl:'',providerMetadataUrl:'',providerApiSecretRef:'',requiresManualPlatformSetup:false,capabilities:[],transmissionKitId:null,notes:''})
 
 const isOperator = computed(()=>user.value?.role==='operator'||user.value?.role==='admin')
 const isAdmin = computed(()=>user.value?.role==='admin')
@@ -33,7 +36,7 @@ async function refresh(){
   if(props.route==='logs') logs.value=await runtimeApi.logs()
   if(props.route==='archive') sessions.value=await runtimeApi.sessions()
   if(props.route==='schedule') schedules.value=await runtimeApi.schedules()
-  if(props.route==='status'){ const [i,w,d]=await Promise.all([runtimeApi.incidents(),runtimeApi.workers(),runtimeApi.destinations()]); incidents.value=i;workers.value=w;destinations.value=d }
+  if(props.route==='status'){ const [i,w,d,p,m]=await Promise.all([runtimeApi.incidents(),runtimeApi.workers(),runtimeApi.destinations(),runtimeApi.providerMonitor(),runtimeApi.systemMetrics()]); incidents.value=i;workers.value=w;destinations.value=d;providerProbes.value=p;systemMetrics.value=m }
   if(props.route==='about'&&isAdmin.value){ [audit.value,backups.value]=await Promise.all([runtimeApi.audit(),runtimeApi.backups()]) }
   if(props.route==='destinations') destinations.value=await runtimeApi.destinations()
  } catch(e){ error.value=e instanceof Error?e.message:String(e) } finally { loading.value=false }
@@ -45,6 +48,8 @@ async function createSchedule(){
 async function removeSchedule(id:string){ if(confirm('Delete this schedule?')){ await runtimeApi.deleteSchedule(id); await refresh() } }
 async function resolveIncident(item:Incident){ const text=resolution.value[item.id]?.trim(); if(!text)return; await runtimeApi.resolveIncident(item.id,text); await refresh() }
 async function backup(){ await runtimeApi.createBackup(); await refresh() }
+async function probe(destinationId?:string){ providerProbes.value=await runtimeApi.probeProviders(destinationId) }
+async function runRetention(){ retentionResult.value=await runtimeApi.runRetention() }
 async function restore(id:string){ if(confirm(`Restore ${id}? Current database state will be replaced.`)){ await runtimeApi.restoreBackup(id); await refresh() } }
 async function saveDestination(){
  const value={...destinationDraft.value,id:destinationDraft.value.id||crypto.randomUUID(),label:destinationDraft.value.label.trim()}
@@ -73,10 +78,15 @@ onMounted(()=>void refresh())
     <label>Endpoint<input v-model="destinationDraft.endpointUrl" placeholder="rtmps://…" required></label>
     <label>Secret reference<input v-model="destinationDraft.streamKeyRef" placeholder="env:YOUTUBE_STREAM_KEY" required></label>
     <label>Protocol<select v-model="destinationDraft.protocol"><option>rtmp</option><option>rtmps</option></select></label>
+    <label>Monitoring<select v-model="destinationDraft.monitorMode"><option value="rtmp-output">FFmpeg output only</option><option value="platform-ack">Platform acknowledgment</option><option value="hls-playback">HLS playback</option></select></label>
+    <label v-if="destinationDraft.monitorMode==='platform-ack'">Acknowledgment URL<input v-model="destinationDraft.providerAckUrl" type="url" placeholder="https://api.provider/status"></label>
+    <label v-if="destinationDraft.monitorMode==='hls-playback'">Playback URL<input v-model="destinationDraft.hlsPlaybackUrl" type="url" placeholder="https://cdn.provider/live.m3u8"></label>
+    <label>Metadata endpoint<input v-model="destinationDraft.providerMetadataUrl" type="url" placeholder="https://api.provider/metadata"></label>
+    <label>Provider API secret<input v-model="destinationDraft.providerApiSecretRef" placeholder="env:YOUTUBE_API_TOKEN"></label>
     <label>Notes<textarea v-model="destinationDraft.notes"></textarea></label>
     <button class="control-button control-button--primary" type="submit">Save destination</button>
    </form>
-   <div class="ops-panel"><h2>Configured outputs</h2><div class="card-list"><article v-for="item in destinations" :key="item.id" class="data-card"><div><strong>{{ item.label }}</strong><p>{{ item.provider }} · {{ item.status }}</p><small>{{ item.endpointUrl }}</small></div><div v-if="isAdmin" class="inline-actions"><button @click="editDestination(item)">Edit</button><button class="danger" @click="deleteDestination(item.id)">Delete</button></div></article><p v-if="!destinations.length" class="empty">No destinations configured.</p></div></div>
+   <div class="ops-panel"><h2>Configured outputs</h2><div class="card-list"><article v-for="item in destinations" :key="item.id" class="data-card"><div><strong>{{ item.label }}</strong><p>{{ item.provider }} · {{ item.status }} · {{ item.monitorMode }}</p><small>{{ item.endpointUrl }}</small></div><div v-if="isAdmin" class="inline-actions"><button @click="editDestination(item)">Edit</button><button class="danger" @click="deleteDestination(item.id)">Delete</button></div></article><p v-if="!destinations.length" class="empty">No destinations configured.</p></div></div>
   </div>
  </template>
 
@@ -95,12 +105,13 @@ onMounted(()=>void refresh())
  </template>
 
  <template v-else-if="route==='status'">
-  <div class="metric-grid"><article class="metric"><span>Workers</span><strong>{{ workers.length }}</strong></article><article class="metric"><span>Live outputs</span><strong>{{ workers.filter(w=>w.state==='running').length }}</strong></article><article class="metric"><span>Open incidents</span><strong>{{ incidents.filter(i=>i.status==='open').length }}</strong></article><article class="metric"><span>Degraded destinations</span><strong>{{ destinations.filter(d=>d.health==='degraded'||d.health==='failed').length }}</strong></article></div>
-  <div class="ops-grid ops-grid--split"><div class="ops-panel"><h2>Destination workers</h2><article v-for="worker in workers" :key="worker.destinationId||worker.id" class="data-card"><div><strong>{{ worker.destinationId||worker.id }}</strong><p>{{ worker.state }} · restarts {{ worker.restartCount }}</p></div><span class="status-pill">{{ worker.health||'unknown' }}</span></article></div><div class="ops-panel"><h2>Incidents</h2><article v-for="item in incidents" :key="item.id" class="incident" :data-severity="item.severity"><strong>{{ item.title }}</strong><p>{{ item.description }}</p><small>{{ item.source }} · {{ item.status }}</small><div v-if="item.status==='open'&&isOperator" class="resolve-row"><input v-model="resolution[item.id]" placeholder="Resolution"><button @click="resolveIncident(item)">Resolve</button></div></article></div></div>
+  <div class="metric-grid"><article class="metric"><span>Workers</span><strong>{{ workers.length }}</strong></article><article class="metric"><span>Live outputs</span><strong>{{ workers.filter(w=>w.state==='running').length }}</strong></article><article class="metric"><span>Open incidents</span><strong>{{ incidents.filter(i=>i.status==='open').length }}</strong></article><article class="metric"><span>Memory</span><strong>{{ systemMetrics?systemMetrics.memory.usedPercent.toFixed(0)+'%':'—' }}</strong></article><article class="metric"><span>Disk</span><strong>{{ systemMetrics?.disk?systemMetrics.disk.usedPercent.toFixed(0)+'%':'—' }}</strong></article><article class="metric"><span>Load 1m</span><strong>{{ systemMetrics?systemMetrics.cpu.load1.toFixed(2):'—' }}</strong></article></div>
+  <div class="ops-grid ops-grid--split"><div class="ops-panel"><h2>Destination workers</h2><article v-for="worker in workers" :key="worker.destinationId||worker.id" class="data-card"><div><strong>{{ worker.destinationId||worker.id }}</strong><p>{{ worker.state }} · restarts {{ worker.restartCount }}</p></div><span class="status-pill">{{ worker.health||'unknown' }}</span></article></div><div class="ops-panel"><h2>Provider delivery</h2><button v-if="isOperator" class="control-button" @click="probe()">Probe all</button><article v-for="item in providerProbes" :key="item.destinationId" class="data-card"><div><strong>{{ item.destinationId }}</strong><p>{{ item.message||'No provider response yet' }}</p><small>{{ item.checkedAt?new Date(item.checkedAt).toLocaleString():'not checked' }} · {{ item.latencyMs??'—' }}ms</small></div><span class="status-pill">{{ item.status }}</span></article></div></div>
+  <div class="ops-grid ops-grid--split"><div class="ops-panel"><h2>Incidents</h2><article v-for="item in incidents" :key="item.id" class="incident" :data-severity="item.severity"><strong>{{ item.title }}</strong><p>{{ item.description }}</p><small>{{ item.source }} · {{ item.status }}</small><div v-if="item.status==='open'&&isOperator" class="resolve-row"><input v-model="resolution[item.id]" placeholder="Resolution"><button @click="resolveIncident(item)">Resolve</button></div></article></div><div class="ops-panel"><h2>System health</h2><dl v-if="systemMetrics"><dt>Process RSS</dt><dd>{{ (systemMetrics.process.rssBytes/1048576).toFixed(1) }} MB</dd><dt>Event loop p99</dt><dd>{{ systemMetrics.eventLoop.p99Ms.toFixed(1) }} ms</dd><dt>Network RX</dt><dd>{{ systemMetrics.network?Math.round(systemMetrics.network.receivedBytes/1048576)+' MB':'—' }}</dd><dt>Network TX</dt><dd>{{ systemMetrics.network?Math.round(systemMetrics.network.transmittedBytes/1048576)+' MB':'—' }}</dd></dl></div></div>
  </template>
 
  <template v-else-if="route==='about'">
-  <div class="ops-grid ops-grid--split"><div class="ops-panel"><h2>Runtime</h2><dl><dt>Product</dt><dd>SYCO23 Multicast Control</dd><dt>Role</dt><dd>{{ user?.role }}</dd><dt>Actor</dt><dd>{{ user?.actor }}</dd><dt>Architecture</dt><dd>Vue control UI + isolated Node/FFmpeg runtime</dd></dl></div><div v-if="isAdmin" class="ops-panel"><h2>Database backups</h2><button class="control-button control-button--primary" @click="backup">Create backup</button><article v-for="item in backups" :key="item.id" class="data-card"><span class="mono">{{ item.id }}</span><button class="danger" @click="restore(item.id)">Restore</button></article></div></div>
+  <div class="ops-grid ops-grid--split"><div class="ops-panel"><h2>Runtime</h2><dl><dt>Product</dt><dd>SYCO23 Multicast Control</dd><dt>Role</dt><dd>{{ user?.role }}</dd><dt>Actor</dt><dd>{{ user?.actor }}</dd><dt>Architecture</dt><dd>Vue control UI + isolated Node/FFmpeg runtime</dd></dl></div><div v-if="isAdmin" class="ops-panel"><h2>Database backups</h2><button class="control-button control-button--primary" @click="backup">Create backup</button><button class="control-button" @click="runRetention">Run retention</button><p v-if="retentionResult" class="muted">Removed {{ Object.values(retentionResult).reduce((a,b)=>a+b,0) }} expired records.</p><article v-for="item in backups" :key="item.id" class="data-card"><span class="mono">{{ item.id }}</span><button class="danger" @click="restore(item.id)">Restore</button></article></div></div>
   <div v-if="isAdmin" class="ops-panel table-wrap"><h2>Audit trail</h2><table><thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Resource</th><th>Outcome</th></tr></thead><tbody><tr v-for="item in audit" :key="item.id"><td>{{ new Date(item.timestamp).toLocaleString() }}</td><td>{{ item.actor }}</td><td>{{ item.action }}</td><td>{{ item.resource }}</td><td>{{ item.outcome }}</td></tr></tbody></table></div>
  </template>
 </section>

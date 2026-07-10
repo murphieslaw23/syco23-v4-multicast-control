@@ -442,3 +442,11 @@ Operational endpoints:
 - `GET /api/provider-monitor`
 - `POST /api/provider-monitor/probe`
 - `GET /api/provider-monitor/:destinationId/events`
+
+## Provider delivery monitoring and retention
+
+Destination records can define platform acknowledgment, HLS playback, and metadata endpoints without storing plaintext credentials. The Status screen exposes provider probe state, latency, host telemetry, and independent worker health. Operators can trigger provider probes; administrators can run retention immediately.
+
+Pipeline start and stop requests support `Idempotency-Key`, preventing accidental duplicate control commands. API requests are persisted as request-correlated structured log entries. `/api/health/ready` checks database access, writable runtime directories, watchdog state, metadata state, and runtime dependencies.
+
+Retention is controlled with the `SYCO_RETENTION_*` environment variables and prunes expired logs, audit records, incidents, metadata snapshots, watchdog events, worker events, and provider-monitor history.

@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { basename, extname, join, resolve } from 'node:path'
-import type { SceneGraph, SceneLayer } from '../../types'
+import type { SceneGraph } from '../../types'
 import type { PersistentDatabase } from '../persistent-db'
 import { deleteAsset, getAllAssets, getAssetById, insertAsset, type UserAssetRecord } from '../dao/userAssets'
 
 const IMAGE_MIMES = new Set(['image/png','image/jpeg','image/webp','image/svg+xml'])
-function safeText(value:string):string { return value.replace(/[&<>\"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]!)) }
+function safeText(value:string):string { return value.replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]!)) }
 function safeColor(value:string|undefined, fallback='#ffffff'):string { return /^#[0-9a-f]{6}$/i.test(value||'') ? value! : fallback }
 export function validateScene(scene:SceneGraph):SceneGraph {
   if (!scene || !Number.isInteger(scene.width) || !Number.isInteger(scene.height) || scene.width<320 || scene.height<180 || scene.width>7680 || scene.height>4320) throw new Error('Invalid scene canvas dimensions')
