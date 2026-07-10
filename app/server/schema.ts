@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS destinations (
   audio_profile TEXT NOT NULL DEFAULT '128k',
   monitor_mode TEXT NOT NULL DEFAULT 'rtmp-output',
   hls_playback_url TEXT,
+  provider_ack_url TEXT,
+  provider_metadata_url TEXT,
+  provider_api_secret_ref TEXT,
   requires_manual_setup INTEGER NOT NULL DEFAULT 0,
   transmission_kit_id TEXT,
   notes TEXT NOT NULL DEFAULT ''
@@ -133,6 +136,17 @@ CREATE TABLE IF NOT EXISTS destination_worker_events (
 );
 CREATE INDEX IF NOT EXISTS idx_destination_worker_events_destination_time ON destination_worker_events(destination_id, timestamp DESC);
 
+CREATE TABLE IF NOT EXISTS provider_monitor_events (
+  id TEXT PRIMARY KEY,
+  destination_id TEXT NOT NULL,
+  timestamp TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  state TEXT NOT NULL,
+  message TEXT,
+  detail TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_provider_monitor_events_destination_time ON provider_monitor_events(destination_id, timestamp DESC);
+
 CREATE TABLE IF NOT EXISTS watchdog_events (
   id TEXT PRIMARY KEY,
   timestamp TEXT NOT NULL,
@@ -171,6 +185,7 @@ const REQUIRED_TABLES = [
   "metadata_snapshots",
   "watchdog_events",
   "destination_worker_events",
+  "provider_monitor_events",
   "user_assets",
 ];
 

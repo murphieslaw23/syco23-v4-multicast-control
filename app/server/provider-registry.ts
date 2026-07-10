@@ -1,4 +1,5 @@
 import type { DestinationState, OutputProfile, Provider } from '../types'
+import type { SecretStore } from './runtime/secret-store'
 
 export interface ProviderCapabilities {
   protocols: Array<'rtmp' | 'rtmps'>
@@ -27,6 +28,9 @@ export interface ProviderAdapter {
   validate(destination: DestinationState): string[]
   validateProfile(profile: OutputProfile): string[]
   buildOutputUrl(destination: DestinationState, streamKey?: string): string
+  probe(destination: DestinationState, secrets: SecretStore, timeoutMs: number): Promise<{ live: boolean; httpStatus: number; message: string }>
+  publishMetadata(destination: DestinationState, metadata: Record<string, unknown>, secrets: SecretStore, timeoutMs: number): Promise<{ httpStatus: number; message: string }>
+  normalizeError(error: unknown): string
 }
 
 const COMMON_RTMP = /^rtmps?:\/\//i
@@ -92,6 +96,11 @@ function createRtmpProvider(
       if (destination.monitorMode === 'hls-playback' && !capabilities.hlsPlayback) {
         errors.push(`${label} does not provide HLS playback monitoring`)
       }
+      if (destination.providerMetadataUrl && !capabilities.metadata) errors.push(`${label} does not support metadata publishing`)
+      for (const [name,value] of [['HLS playback',destination.hlsPlaybackUrl],['Provider acknowledgement',destination.providerAckUrl],['Provider metadata',destination.providerMetadataUrl]] as const) {
+        if (!value) continue
+        try { const url = new URL(value); if (!['http:','https:'].includes(url.protocol)) errors.push(`${name} URL must use HTTP or HTTPS`) } catch { errors.push(`${name} URL is invalid`) }
+      }
       return errors
     },
     validateProfile(profile) {
@@ -117,6 +126,47 @@ function createRtmpProvider(
       if (!streamKey?.trim()) throw new Error(`Unresolved stream key for ${destination.label}`)
       const key = streamKey.trim().replace(/^\/+/, '')
       return `${endpoint}/${key}`
+    },
+    async probe(destination, secrets, timeoutMs) {
+      const target = destination.monitorMode === 'hls-playback' ? destination.hlsPlaybackUrl : destination.providerAckUrl
+      if (!target) throw new Error(`${label} monitoring URL is not configured`)
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
+      try {
+        const headers: Record<string,string> = { accept: destination.monitorMode === 'hls-playback' ? 'application/vnd.apple.mpegurl,application/x-mpegURL,text/plain;q=0.8,*/*;q=0.1' : 'application/json' }
+        if (destination.providerApiSecretRef) headers.authorization = `Bearer ${await secrets.resolve(destination.providerApiSecretRef)}`
+        const response = await fetch(target, { method: 'GET', headers, signal: controller.signal, redirect: 'follow' })
+        const body = await response.text()
+        if (!response.ok) throw new Error(`${label} probe returned HTTP ${response.status}`)
+        if (destination.monitorMode === 'hls-playback') {
+          const live = body.includes('#EXTM3U') && (body.includes('#EXTINF') || body.includes('#EXT-X-STREAM-INF'))
+          return { live, httpStatus: response.status, message: live ? 'Playback manifest is active' : 'Playback manifest is not active' }
+        }
+        let value: unknown = body
+        try { value = JSON.parse(body) } catch {}
+        const record = typeof value === 'object' && value ? value as Record<string,unknown> : {}
+        const state = String(record.status ?? record.state ?? record.stream_status ?? record.live ?? '').toLowerCase()
+        const live = record.live === true || ['live','online','active','streaming','ready'].includes(state)
+        return { live, httpStatus: response.status, message: live ? 'Platform acknowledged live stream' : `Platform state: ${state || 'unknown'}` }
+      } finally { clearTimeout(timer) }
+    },
+    async publishMetadata(destination, metadata, secrets, timeoutMs) {
+      if (!destination.providerMetadataUrl) throw new Error(`${label} metadata endpoint is not configured`)
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
+      try {
+        const headers: Record<string,string> = { 'content-type': 'application/json', accept: 'application/json' }
+        if (destination.providerApiSecretRef) headers.authorization = `Bearer ${await secrets.resolve(destination.providerApiSecretRef)}`
+        const payload = { title: String(metadata.title || ''), artist: String(metadata.artist || ''), show: metadata.show == null ? null : String(metadata.show), listeners: metadata.listeners == null ? null : Number(metadata.listeners) }
+        const response = await fetch(destination.providerMetadataUrl, { method: 'PATCH', headers, body: JSON.stringify(payload), signal: controller.signal, redirect: 'follow' })
+        if (!response.ok) throw new Error(`${label} metadata update returned HTTP ${response.status}`)
+        return { httpStatus: response.status, message: 'Metadata published' }
+      } finally { clearTimeout(timer) }
+    },
+    normalizeError(error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return `${label} request timed out`
+      if (error instanceof Error) return error.message
+      return String(error)
     },
   }
 }

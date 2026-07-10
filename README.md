@@ -432,3 +432,13 @@ The template gallery now uses the persistent runtime API. Operators can create a
 The runtime exposes provider capability/profile policies at `GET /api/providers` and live host telemetry at `GET /api/system/metrics`. Output profiles are validated against the selected provider before persistence and again before FFmpeg worker startup.
 
 Operational logs support server-side filtering and pagination through `GET /api/logs` using `limit`, `offset`, `level`, `source`, `search`, `from`, and `to`. Operators can export the filtered result from `GET /api/logs/export.csv`.
+
+## Provider acknowledgement and metadata publishing
+
+Destinations can use `platform-ack` or `hls-playback` monitoring. Configure `providerAckUrl` or `hlsPlaybackUrl` respectively. Optional API authentication uses `providerApiSecretRef`; the referenced secret is resolved at runtime and is never persisted as plaintext. Providers with metadata capability can use `providerMetadataUrl`; normalized AzuraCast metadata is delivered by authenticated HTTP PATCH requests.
+
+Operational endpoints:
+
+- `GET /api/provider-monitor`
+- `POST /api/provider-monitor/probe`
+- `GET /api/provider-monitor/:destinationId/events`

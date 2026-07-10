@@ -3,8 +3,8 @@ import type { DestinationState } from '../../types/index'
 
 export function insertDestination(db: SqlJsDatabase, dest: DestinationState): void {
   db.run(
-    `INSERT INTO destinations (id, provider, label, protocol, endpoint_url, stream_key_ref, status, health, last_handshake_at, last_error, video_profile, audio_profile, monitor_mode, hls_playback_url, requires_manual_setup, transmission_kit_id, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO destinations (id, provider, label, protocol, endpoint_url, stream_key_ref, status, health, last_handshake_at, last_error, video_profile, audio_profile, monitor_mode, hls_playback_url, provider_ack_url, provider_metadata_url, provider_api_secret_ref, requires_manual_setup, transmission_kit_id, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       dest.id,
       dest.provider,
@@ -20,6 +20,9 @@ export function insertDestination(db: SqlJsDatabase, dest: DestinationState): vo
       dest.audioProfile,
       dest.monitorMode,
       dest.hlsPlaybackUrl ?? null,
+      dest.providerAckUrl ?? null,
+      dest.providerMetadataUrl ?? null,
+      dest.providerApiSecretRef ?? null,
       dest.requiresManualPlatformSetup ? 1 : 0,
       dest.transmissionKitId,
       dest.notes,
@@ -45,6 +48,9 @@ export function updateDestination(db: SqlJsDatabase, id: string, patch: Partial<
     audioProfile: { column: 'audio_profile', transform: (value) => value },
     monitorMode: { column: 'monitor_mode', transform: (value) => value },
     hlsPlaybackUrl: { column: 'hls_playback_url', transform: (value) => value },
+    providerAckUrl: { column: 'provider_ack_url', transform: (value) => value },
+    providerMetadataUrl: { column: 'provider_metadata_url', transform: (value) => value },
+    providerApiSecretRef: { column: 'provider_api_secret_ref', transform: (value) => value },
     requiresManualPlatformSetup: { column: 'requires_manual_setup', transform: (value) => value ? 1 : 0 },
     transmissionKitId: { column: 'transmission_kit_id', transform: (value) => value },
     notes: { column: 'notes', transform: (value) => value },
@@ -95,9 +101,12 @@ function rowToDestination(row: unknown[]): DestinationState {
     audioProfile: row[11] as string,
     monitorMode: row[12] as DestinationState['monitorMode'],
     hlsPlaybackUrl: (row[13] as string) ?? undefined,
-    requiresManualPlatformSetup: (row[14] as number) === 1,
-    transmissionKitId: (row[15] as string) ?? null,
-    notes: row[16] as string,
+    providerAckUrl: (row[14] as string) ?? undefined,
+    providerMetadataUrl: (row[15] as string) ?? undefined,
+    providerApiSecretRef: (row[16] as string) ?? undefined,
+    requiresManualPlatformSetup: (row[17] as number) === 1,
+    transmissionKitId: (row[18] as string) ?? null,
+    notes: row[19] as string,
     capabilities: [],
   }
 }

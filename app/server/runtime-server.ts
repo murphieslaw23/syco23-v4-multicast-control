@@ -27,13 +27,16 @@ import { AssetStore, renderSceneSvg } from "./scene/scene-runtime";
 import { listProviderAdapters } from "./provider-registry";
 import { queryLogs, logsToCsv } from "./dao/logs";
 import { SystemTelemetry } from "./runtime/system-telemetry";
+import { EnvironmentSecretStore } from "./runtime/secret-store";
+import { ProviderMonitorRuntime } from "./runtime/provider-monitor-runtime";
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "0.0.0.0";
 const distRoot = resolve(process.cwd(), "dist");
 const persistence = new PersistentDatabase(process.env.SYCO_DB_PATH);
 const events = new RuntimeEventBus();
-const service = new ControlService(persistence, events);
+const secretStore = new EnvironmentSecretStore();
+const service = new ControlService(persistence, events, secretStore);
 const operations = new OperationsStore(persistence, events);
 const scheduler = new SchedulerRuntime(operations, service, events);
 const wsTickets = new WebSocketTicketStore();
@@ -69,6 +72,7 @@ const preview = new HlsPreviewRuntime(events, {
   listSize: Number(process.env.SYCO_PREVIEW_LIST_SIZE || 6),
 });
 const assets = new AssetStore(persistence, process.env.SYCO_ASSET_DIR || join(process.cwd(), "data/assets"));
+const providerMonitor = new ProviderMonitorRuntime(persistence, events, secretStore, () => service.listDestinations());
 const telemetry = new SystemTelemetry(resolve(process.env.SYCO_DATA_DIR || join(process.cwd(), "data")));
 const backupRoot = resolve(
   process.env.SYCO_BACKUP_DIR || join(process.cwd(), "data/backups"),
@@ -406,6 +410,24 @@ async function route(
       }, requestId);
     if (request.method === "GET" && url.pathname === "/api/system/metrics")
       return json(response, 200, { ok: true, data: await telemetry.snapshot() }, requestId);
+    if (request.method === "GET" && url.pathname === "/api/provider-monitor") {
+      requireRole(context, "viewer");
+      return json(response, 200, { ok: true, data: providerMonitor.list() }, requestId);
+    }
+    if (request.method === "POST" && url.pathname === "/api/provider-monitor/probe") {
+      requireRole(context, "operator");
+      const payload = await body(request) as { destinationId?: string };
+      const data = await providerMonitor.probeNow(payload.destinationId);
+      return json(response, 200, { ok: true, data }, requestId);
+    }
+    const providerEventsMatch = url.pathname.match(/^\/api\/provider-monitor\/([^/]+)\/events$/);
+    if (request.method === "GET" && providerEventsMatch) {
+      requireRole(context, "viewer");
+      const id = decodeURIComponent(providerEventsMatch[1]);
+      const rows = persistence.database.exec('SELECT id,destination_id,timestamp,event_type,state,message,detail FROM provider_monitor_events WHERE destination_id=? ORDER BY timestamp DESC LIMIT 200', [id]);
+      const data = rows[0]?.values.map(row => ({ id:String(row[0]), destinationId:String(row[1]), timestamp:String(row[2]), eventType:String(row[3]), state:String(row[4]), message:row[5] == null ? null : String(row[5]), detail:JSON.parse(String(row[6] || '{}')) })) || [];
+      return json(response, 200, { ok: true, data }, requestId);
+    }
     if (request.method === "GET" && url.pathname === "/api/providers")
       return json(response, 200, { ok: true, data: listProviderAdapters().map(({ id, label, capabilities, profilePolicy }) => ({ id, label, capabilities, profilePolicy })) }, requestId);
     if (request.method === "GET" && url.pathname === "/api/destination-workers")
@@ -791,6 +813,8 @@ async function main(): Promise<void> {
   scheduler.start();
   watchdog.start();
   metadata.start();
+  providerMonitor.start();
+  events.subscribe((event) => { if (event.type === "metadata.updated") providerMonitor.scheduleMetadataPublish(event.payload as Record<string, unknown>); });
   const server = createServer(
     (request, response) => void route(request, response),
   );
@@ -828,6 +852,7 @@ async function main(): Promise<void> {
       scheduler.stop();
       watchdog.stop();
       metadata.stop();
+    providerMonitor.stop();
       telemetry.close();
       sockets.close();
       void Promise.allSettled([service.stopPipeline(), preview.stop()])

@@ -6,7 +6,7 @@ const destination: DestinationState = {
   id: 'yt', provider: 'youtube', label: 'YouTube', protocol: 'rtmps',
   endpointUrl: 'rtmps://a.rtmp.youtube.com/live2', streamKeyRef: 'env:YOUTUBE_KEY',
   status: 'configured', health: null, lastHandshakeAt: null, lastError: null,
-  videoProfile: 'yt-1080', audioProfile: 'aac', monitorMode: 'platform-ack',
+  videoProfile: 'yt-1080', audioProfile: 'aac', monitorMode: 'platform-ack', providerAckUrl: 'https://monitor.example/status',
   requiresManualPlatformSetup: true, capabilities: [], transmissionKitId: null, notes: '',
 }
 const profile: OutputProfile = {

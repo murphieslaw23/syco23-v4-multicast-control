@@ -29,6 +29,10 @@ export class PersistentDatabase {
       db.run('ALTER TABLE schedules RENAME TO schedules_legacy')
     }
     db.run(SCHEMA_SQL)
+    const destinationColumns = db.exec('PRAGMA table_info(destinations)')[0]?.values.map(row => String(row[1])) ?? []
+    if (!destinationColumns.includes('provider_ack_url')) db.run('ALTER TABLE destinations ADD COLUMN provider_ack_url TEXT')
+    if (!destinationColumns.includes('provider_metadata_url')) db.run('ALTER TABLE destinations ADD COLUMN provider_metadata_url TEXT')
+    if (!destinationColumns.includes('provider_api_secret_ref')) db.run('ALTER TABLE destinations ADD COLUMN provider_api_secret_ref TEXT')
     const templateColumns = db.exec('PRAGMA table_info(templates)')[0]?.values.map(row => String(row[1])) ?? []
     if (!templateColumns.includes('scene_json')) db.run("ALTER TABLE templates ADD COLUMN scene_json TEXT NOT NULL DEFAULT '{}'")
     if (!templateColumns.includes('version')) db.run('ALTER TABLE templates ADD COLUMN version INTEGER NOT NULL DEFAULT 1')

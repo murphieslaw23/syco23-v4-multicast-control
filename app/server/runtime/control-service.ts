@@ -427,6 +427,24 @@ export class ControlService {
         lastError: reason,
       });
       this.refreshAggregateStatus();
+       } else if (type === "provider.probe.updated" && destinationId) {
+      const probe = payload as { status?: string; message?: string };
+      const healthy = probe.status === "healthy";
+      await this.setDestinationRuntimeState([destinationId], {
+        status: healthy ? "live" : "degraded",
+        health: healthy ? "ok" : "degraded",
+        lastHandshakeAt: healthy ? new Date().toISOString() : undefined,
+        lastError: healthy ? null : probe.message || "Provider did not acknowledge stream",
+      });
+      this.refreshAggregateStatus();
+    } else if (type === "provider.probe.failed" && destinationId) {
+      const probe = payload as { message?: string };
+      await this.setDestinationRuntimeState([destinationId], {
+        status: "degraded",
+        health: "failed",
+        lastError: probe.message || "Provider probe failed",
+      });
+      this.refreshAggregateStatus();
     }
   }
 

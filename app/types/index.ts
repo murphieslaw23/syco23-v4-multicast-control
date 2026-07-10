@@ -46,6 +46,9 @@ export interface DestinationState {
   audioProfile: string
   monitorMode: 'rtmp-output' | 'platform-ack' | 'hls-playback'
   hlsPlaybackUrl?: string
+  providerAckUrl?: string
+  providerMetadataUrl?: string
+  providerApiSecretRef?: string
   requiresManualPlatformSetup: boolean
   capabilities: string[]
   transmissionKitId: string | null
