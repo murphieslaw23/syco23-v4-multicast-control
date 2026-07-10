@@ -3,6 +3,7 @@ import { buildFfmpegFanoutCommand } from '../ffmpeg/command-builder'
 import { FfmpegProcessSupervisor } from '../ffmpeg/process-supervisor'
 import { getAllDestinations, insertDestination, updateDestination, deleteDestination } from '../dao/destinations'
 import { getAllProfiles, insertProfile } from '../dao/profiles'
+import { getAllStreams, updateStream } from '../dao/streams'
 import { getRuntimeStore, appendRuntimeLog, createRuntimeId } from '../runtime-store'
 import { getProviderAdapter } from '../provider-registry'
 import type { PersistentDatabase } from '../persistent-db'
@@ -27,6 +28,7 @@ export class ControlService {
     const store = getRuntimeStore()
     store.destinations = getAllDestinations(this.persistence.database)
     store.profiles = getAllProfiles(this.persistence.database)
+    store.streams = getAllStreams(this.persistence.database).map(item => ({ id: item.id, title: item.title, startedAt: item.startedAt, stoppedAt: item.endedAt }))
     const logs = this.persistence.database.exec('SELECT id,timestamp,level,source,message FROM log_entries ORDER BY timestamp DESC LIMIT 500')
     store.logs = logs[0]?.values.map((row) => ({ id: String(row[0]), timestamp: String(row[1]), level: row[2] as never, source: String(row[3]), message: String(row[4]) })) ?? []
     this.log('info', 'runtime', 'Control service initialized')
@@ -77,13 +79,14 @@ export class ControlService {
     return structuredClone(record)
   }
 
-  startPipeline(request: StartPipelineRequest): ReturnType<FfmpegProcessSupervisor['snapshot']> {
+  async startPipeline(request: StartPipelineRequest): Promise<ReturnType<FfmpegProcessSupervisor['snapshot']>> {
     const selected = request.destinationIds?.length
       ? getRuntimeStore().destinations.filter((item) => request.destinationIds?.includes(item.id))
       : getRuntimeStore().destinations
     const command = buildFfmpegFanoutCommand({ inputUrl: request.inputUrl, destinations: selected, profiles: getRuntimeStore().profiles, streamKeys: request.streamKeys, ffmpegPath: request.ffmpegPath })
     this.process.start(command)
     const session = { id: createRuntimeId('session'), title: request.title || 'SYCO23 Transmission', startedAt: new Date().toISOString(), stoppedAt: null }
+    await this.persistence.transaction(db => db.run('INSERT INTO streams (id,title,artist,started_at,ended_at,status) VALUES (?,?,?,?,?,?)', [session.id, session.title, '', session.startedAt, null, 'online']))
     getRuntimeStore().streams.unshift(session)
     getRuntimeStore().status = { live: true, pipelineHealth: 'ok', ingestStatus: 'connected' }
     this.log('success', 'pipeline', `Started ${session.title} with ${command.outputCount} output(s)`)
@@ -93,7 +96,10 @@ export class ControlService {
   async stopPipeline(): Promise<ReturnType<FfmpegProcessSupervisor['snapshot']>> {
     await this.process.stop()
     const active = getRuntimeStore().streams.find((item) => item.stoppedAt === null)
-    if (active) active.stoppedAt = new Date().toISOString()
+    if (active) {
+      active.stoppedAt = new Date().toISOString()
+      await this.persistence.transaction(db => updateStream(db, active.id, { endedAt: active.stoppedAt, status: 'offline' }))
+    }
     getRuntimeStore().status = { live: false, pipelineHealth: 'ok', ingestStatus: 'idle' }
     this.log('info', 'pipeline', 'Pipeline stopped')
     return this.process.snapshot()
@@ -102,6 +108,8 @@ export class ControlService {
   status() {
     return { ...getRuntimeStore().status, supervisor: this.process.snapshot(), destinations: getRuntimeStore().destinations.length }
   }
+
+  sessions(limit = 200) { return structuredClone(getRuntimeStore().streams.slice(0, Math.max(1, Math.min(limit, 1000)))) }
 
   logs(limit = 200) { return structuredClone(getRuntimeStore().logs.slice(0, Math.max(1, Math.min(limit, 500)))) }
 

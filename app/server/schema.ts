@@ -61,10 +61,40 @@ CREATE TABLE IF NOT EXISTS transmission_kits (
 
 CREATE TABLE IF NOT EXISTS schedules (
   id TEXT PRIMARY KEY,
-  stream_id TEXT NOT NULL,
-  scheduled_start TEXT NOT NULL,
-  scheduled_end TEXT,
-  recurring INTEGER NOT NULL DEFAULT 0
+  name TEXT NOT NULL,
+  action TEXT NOT NULL,
+  run_at TEXT NOT NULL,
+  recurrence_minutes INTEGER,
+  payload TEXT NOT NULL DEFAULT '{}',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  last_run_at TEXT,
+  next_run_at TEXT NOT NULL,
+  failure_count INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT
+);
+
+CREATE TABLE IF NOT EXISTS audit_entries (
+  id TEXT PRIMARY KEY,
+  timestamp TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  role TEXT NOT NULL,
+  action TEXT NOT NULL,
+  resource TEXT NOT NULL,
+  resource_id TEXT,
+  outcome TEXT NOT NULL,
+  detail TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS incidents (
+  id TEXT PRIMARY KEY,
+  opened_at TEXT NOT NULL,
+  closed_at TEXT,
+  severity TEXT NOT NULL,
+  status TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  source TEXT NOT NULL,
+  resolution TEXT
 );
 
 CREATE TABLE IF NOT EXISTS log_entries (
@@ -117,6 +147,8 @@ const REQUIRED_TABLES = [
   'templates',
   'transmission_kits',
   'schedules',
+  'audit_entries',
+  'incidents',
   'log_entries',
   'metadata_snapshots',
   'watchdog_events',
