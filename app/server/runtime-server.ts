@@ -32,6 +32,8 @@ import { ProviderMonitorRuntime } from "./runtime/provider-monitor-runtime";
 import { RetentionRuntime } from "./runtime/retention-runtime";
 import { IdempotencyStore } from "./runtime/idempotency-store";
 import { insertLog } from "./dao/logs";
+import { AuthService } from "./runtime/auth-service";
+import { RateLimiter } from "./runtime/rate-limiter";
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "0.0.0.0";
@@ -81,6 +83,8 @@ const backupRoot = resolve(
   process.env.SYCO_BACKUP_DIR || join(process.cwd(), "data/backups"),
 );
 const idempotency = new IdempotencyStore(Number(process.env.SYCO_IDEMPOTENCY_TTL_MS || 300000));
+const authService=new AuthService(persistence,Number(process.env.SYCO_SESSION_TTL_MS||28800000));
+const rateLimiter=new RateLimiter(Number(process.env.SYCO_RATE_LIMIT_CAPACITY||120),Number(process.env.SYCO_RATE_LIMIT_REFILL_PER_SECOND||2));
 const retention = new RetentionRuntime(persistence, events, {
   intervalMs: Number(process.env.SYCO_RETENTION_INTERVAL_MS || 3600000),
   logsDays: Number(process.env.SYCO_RETENTION_LOG_DAYS || 30),
@@ -131,22 +135,10 @@ async function body(
 }
 
 function auth(request: IncomingMessage): AuthContext | null {
-  const header = request.headers.authorization || "";
-  const supplied = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const configured: Array<[string | undefined, AuthContext]> = [
-    [
-      process.env.SYCO_ADMIN_TOKEN || process.env.SYCO_API_TOKEN,
-      { actor: "api-admin", role: "admin" },
-    ],
-    [
-      process.env.SYCO_OPERATOR_TOKEN,
-      { actor: "api-operator", role: "operator" },
-    ],
-    [process.env.SYCO_VIEWER_TOKEN, { actor: "api-viewer", role: "viewer" }],
-  ];
-  const active = configured.filter(([token]) => Boolean(token));
-  if (!active.length) return { actor: "local-dev", role: "admin" };
-  return active.find(([token]) => token === supplied)?.[1] ?? null;
+  const session=authService.authenticate(request); if(session)return session;
+  const header=request.headers.authorization||"", supplied=header.startsWith("Bearer ")?header.slice(7):"";
+  const configured:Array<[string|undefined,AuthContext]>=[[process.env.SYCO_ADMIN_TOKEN||process.env.SYCO_API_TOKEN,{actor:"api-admin",role:"admin"}],[process.env.SYCO_OPERATOR_TOKEN,{actor:"api-operator",role:"operator"}],[process.env.SYCO_VIEWER_TOKEN,{actor:"api-viewer",role:"viewer"}]];
+  const active=configured.filter(([token])=>Boolean(token)); if(!active.length&&!process.env.SYCO_BOOTSTRAP_ADMIN_USER)return{actor:"local-dev",role:"admin"}; return active.find(([token])=>token===supplied)?.[1]??null;
 }
 
 function requireRole(context: AuthContext, role: Role): void {
@@ -274,6 +266,10 @@ async function route(
     createReadStream(path).pipe(response);
     return;
   }
+  const clientKey=String(request.headers["x-forwarded-for"]||request.socket.remoteAddress||"unknown").split(",")[0].trim();
+  const rate=rateLimiter.consume(`${clientKey}:${url.pathname==="/api/auth/login"?"login":"api"}`,url.pathname==="/api/auth/login"?10:1); response.setHeader("x-ratelimit-remaining",String(rate.remaining));
+  if(!rate.allowed){response.setHeader("retry-after",String(rate.retryAfterSeconds));return json(response,429,{ok:false,error:{code:"RATE_LIMITED",message:"Too many requests",requestId}},requestId)}
+  if(request.method==="POST"&&url.pathname==="/api/auth/login"){try{const input=await body(request) as {username?:string;password?:string};const result=await authService.login(input.username||"",input.password||"",request);authService.setSessionCookie(response,result.token,Math.max(1,Math.floor((new Date(result.expiresAt).getTime()-Date.now())/1000)));return json(response,200,{ok:true,data:{actor:result.identity.actor,role:result.identity.role,csrfToken:result.identity.csrfToken,expiresAt:result.expiresAt}},requestId)}catch{return json(response,401,{ok:false,error:{code:"INVALID_CREDENTIALS",message:"Invalid username or password",requestId}},requestId)}}
   if (request.method === "GET" && url.pathname === "/api/health")
     return json(
       response,
@@ -318,6 +314,11 @@ async function route(
       requestId,
     );
   try {
+    authService.assertCsrf(request,context);
+    if(request.method==="POST"&&url.pathname==="/api/auth/logout"){await authService.logout(context);authService.clearSessionCookie(response);return json(response,204,null,requestId)}
+    if(request.method==="GET"&&url.pathname==="/api/users"){requireRole(context,"admin");return json(response,200,{ok:true,data:authService.listUsers()},requestId)}
+    if(request.method==="POST"&&url.pathname==="/api/users"){requireRole(context,"admin");const input=await body(request) as {username?:string;password?:string;role?:Role};const data=await audited(context,"create","user",null,()=>authService.createUser(input.username||"",input.password||"",input.role||"viewer"));return json(response,201,{ok:true,data},requestId)}
+    const revisionMatch=url.pathname.match(/^\/api\/revisions\/([^/]+)\/([^/]+)$/);if(request.method==="GET"&&revisionMatch){requireRole(context,"admin");return json(response,200,{ok:true,data:operations.listRevisions(decodeURIComponent(revisionMatch[1]),decodeURIComponent(revisionMatch[2]))},requestId)}
     if (request.method === "GET" && url.pathname === "/api/me")
       return json(response, 200, { ok: true, data: context });
     if (request.method === "POST" && url.pathname === "/api/events/ticket")
@@ -342,13 +343,15 @@ async function route(
       requireRole(context, "admin");
       const input = await body(request) as { name:string; provider:Template["provider"]; scene:SceneGraph; isCustom?:boolean };
       const data = await audited(context, "create", "template", null, () => service.createTemplate(input));
+      await operations.recordRevision(context.actor,"template",data.id,data);
       return json(response, 201, { ok:true, data }, requestId);
     }
     const templateMatch = url.pathname.match(/^\/api\/templates\/([^/]+)$/);
     if (templateMatch && request.method === "PATCH") {
       requireRole(context, "admin"); const id=decodeURIComponent(templateMatch[1]);
       const patch=await body(request) as Partial<Pick<Template,"name"|"provider"|"scene">>;
-      const data=await audited(context,"update","template",id,()=>service.patchTemplate(id,patch));
+      const current=service.getTemplate(id),expected=String(request.headers["if-match"]||"").replace(/\D/g,"");if(expected&&Number(expected)!==Number(current.version||1))throw new ApiError("REVISION_CONFLICT","Template revision does not match",409);
+      const data=await audited(context,"update","template",id,()=>service.patchTemplate(id,patch));await operations.recordRevision(context.actor,"template",id,data);response.setHeader("etag",`"${data.version||1}"`);
       return json(response,200,{ok:true,data},requestId);
     }
     if (templateMatch && request.method === "DELETE") {
@@ -811,6 +814,8 @@ async function route(
 
 async function main(): Promise<void> {
   await service.initialize();
+  await authService.initialize();
+  await authService.prune();
   await assets.initialize();
   await metadata.initialize();
   events.subscribe((event) => {

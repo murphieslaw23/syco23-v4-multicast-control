@@ -155,6 +155,12 @@ CREATE TABLE IF NOT EXISTS watchdog_events (
   message TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY,username TEXT NOT NULL UNIQUE,password_hash TEXT NOT NULL,role TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,last_login_at TEXT);
+CREATE TABLE IF NOT EXISTS user_sessions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,csrf_token TEXT NOT NULL,created_at TEXT NOT NULL,expires_at TEXT NOT NULL,last_seen_at TEXT NOT NULL,revoked_at TEXT,ip_address TEXT,user_agent TEXT);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token_hash);
+CREATE TABLE IF NOT EXISTS configuration_revisions (id TEXT PRIMARY KEY,resource TEXT NOT NULL,resource_id TEXT NOT NULL,revision INTEGER NOT NULL,actor TEXT NOT NULL,created_at TEXT NOT NULL,snapshot TEXT NOT NULL,UNIQUE(resource,resource_id,revision));
+CREATE INDEX IF NOT EXISTS idx_configuration_revisions_resource ON configuration_revisions(resource,resource_id,revision DESC);
+
 CREATE TABLE IF NOT EXISTS user_assets (
   id TEXT PRIMARY KEY,
   filename TEXT NOT NULL,
@@ -187,6 +193,9 @@ const REQUIRED_TABLES = [
   "destination_worker_events",
   "provider_monitor_events",
   "user_assets",
+  "users",
+  "user_sessions",
+  "configuration_revisions",
 ];
 
 export function validateSchema(sql: string): SchemaValidationResult {

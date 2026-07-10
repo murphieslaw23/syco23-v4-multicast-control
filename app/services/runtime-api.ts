@@ -16,6 +16,8 @@ export interface SystemMetrics { timestamp:string; uptimeSeconds:number; process
 export interface WorkerSnapshot { id?:string; destinationId?:string; state:string; pid:number|null; health?:string; restartCount:number; lastError:string|null; cooldownUntil?:string|null; metrics?:Record<string,number> }
 interface Envelope<T> { ok: boolean; data?: T; error?: ApiFailure | string }
 
+let csrfToken = sessionStorage.getItem('syco_csrf') || ''
+
 function apiToken(): string {
   return String((globalThis as typeof globalThis & { SYCO_CONFIG?: { apiToken?: string } }).SYCO_CONFIG?.apiToken || '')
 }
@@ -26,7 +28,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body) headers.set('content-type', 'application/json')
   const token = apiToken()
   if (token) headers.set('authorization', `Bearer ${token}`)
-  const response = await fetch(path, { ...init, headers })
+  if (csrfToken && init.method && !['GET','HEAD'].includes(init.method)) headers.set('x-csrf-token', csrfToken)
+  const response = await fetch(path, { ...init, headers, credentials: 'same-origin' })
   const payload = response.status === 204 ? { ok: true } : await response.json() as Envelope<T>
   if (!response.ok || !payload.ok) {
     const failure = typeof payload.error === 'string' ? payload.error : payload.error?.message
@@ -65,6 +68,8 @@ export interface PreviewStatus {
 export interface ManagedAsset { id: string; filename: string; mimeType: string; size: number; sha256: string; createdAt: string }
 
 export const runtimeApi = {
+  login: async (username:string,password:string) => { const data=await request<CurrentUser & {csrfToken:string;expiresAt:string}>('/api/auth/login',{method:'POST',body:JSON.stringify({username,password})}); csrfToken=data.csrfToken; sessionStorage.setItem('syco_csrf',csrfToken); return data },
+  logout: async () => { await request<void>('/api/auth/logout',{method:'POST'}); csrfToken=''; sessionStorage.removeItem('syco_csrf') },
 
   me: () => request<CurrentUser>('/api/me'),
   logs: (limit=500) => request<RuntimeLog[]>(`/api/logs?limit=${limit}`),
@@ -92,7 +97,7 @@ export const runtimeApi = {
   profiles: () => request<OutputProfile[]>('/api/profiles'),
   templates: () => request<Template[]>('/api/templates'),
   createTemplate: (input: { name: string; provider: Provider; scene: SceneGraph; isCustom?: boolean }) => request<Template>('/api/templates', { method: 'POST', body: JSON.stringify(input) }),
-  updateTemplate: (id: string, patch: Partial<Pick<Template, 'name' | 'provider' | 'scene'>>) => request<Template>(`/api/templates/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  updateTemplate: (id: string, patch: Partial<Pick<Template, 'name' | 'provider' | 'scene'>>, version?:number) => request<Template>(`/api/templates/${encodeURIComponent(id)}`, { method: 'PATCH', headers: version ? { 'if-match': `"${version}"` } : undefined, body: JSON.stringify(patch) }),
   deleteTemplate: (id: string) => request<void>(`/api/templates/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   assets: () => request<ManagedAsset[]>('/api/assets'),
   uploadAsset: (input: { filename: string; mimeType: string; base64: string }) => request<ManagedAsset>('/api/assets', { method: 'POST', body: JSON.stringify(input) }),

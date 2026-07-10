@@ -6,7 +6,7 @@ describe("server/schema", () => {
     const result = validateSchema(SCHEMA_SQL);
     expect(result.valid).toBe(true);
     expect(result.missing).toHaveLength(0);
-    expect(result.tables).toHaveLength(14);
+    expect(result.tables).toHaveLength(17);
   });
 
   it("includes streams table", () => {
