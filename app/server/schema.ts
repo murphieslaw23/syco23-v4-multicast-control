@@ -46,7 +46,11 @@ CREATE TABLE IF NOT EXISTS templates (
   provider TEXT NOT NULL,
   preview_url TEXT NOT NULL DEFAULT '',
   is_custom INTEGER NOT NULL DEFAULT 0,
-  custom_background_ref TEXT
+  custom_background_ref TEXT,
+  scene_json TEXT NOT NULL DEFAULT '{}',
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS transmission_kits (
@@ -142,7 +146,9 @@ CREATE TABLE IF NOT EXISTS user_assets (
   filename TEXT NOT NULL,
   mime_type TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  size INTEGER NOT NULL DEFAULT 0
+  size INTEGER NOT NULL DEFAULT 0,
+  storage_path TEXT NOT NULL DEFAULT '',
+  sha256 TEXT NOT NULL DEFAULT ''
 );
 `;
 

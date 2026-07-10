@@ -2,6 +2,7 @@ import type {
   DestinationState,
   OutputProfile,
   PipelineHealth,
+  SceneGraph,
 } from "../../types";
 import type { RuntimeEventBus } from "../runtime/event-bus";
 import type { FfmpegCommand } from "./command-builder";
@@ -62,6 +63,9 @@ export class DestinationWorkerManager {
     profiles: OutputProfile[];
     streamKeys: Record<string, string>;
     ffmpegPath?: string;
+    scene?: SceneGraph;
+    sceneMetadata?: Record<string, string | number | undefined>;
+    sceneAssets?: Record<string, string>;
   }): Promise<void> {
     if (this.running || this.workers.size)
       throw new Error("Destination workers are already active");
@@ -73,6 +77,9 @@ export class DestinationWorkerManager {
         profiles: options.profiles,
         streamKeys: options.streamKeys,
         ffmpegPath: options.ffmpegPath,
+        scene: options.scene,
+        sceneMetadata: options.sceneMetadata,
+        sceneAssets: options.sceneAssets,
       });
       const supervisor = new FfmpegProcessSupervisor(this.events, {
         destinationId: destination.id,

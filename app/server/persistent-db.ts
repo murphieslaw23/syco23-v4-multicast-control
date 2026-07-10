@@ -29,6 +29,14 @@ export class PersistentDatabase {
       db.run('ALTER TABLE schedules RENAME TO schedules_legacy')
     }
     db.run(SCHEMA_SQL)
+    const templateColumns = db.exec('PRAGMA table_info(templates)')[0]?.values.map(row => String(row[1])) ?? []
+    if (!templateColumns.includes('scene_json')) db.run("ALTER TABLE templates ADD COLUMN scene_json TEXT NOT NULL DEFAULT '{}'")
+    if (!templateColumns.includes('version')) db.run('ALTER TABLE templates ADD COLUMN version INTEGER NOT NULL DEFAULT 1')
+    if (!templateColumns.includes('created_at')) db.run("ALTER TABLE templates ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
+    if (!templateColumns.includes('updated_at')) db.run("ALTER TABLE templates ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
+    const assetColumns = db.exec('PRAGMA table_info(user_assets)')[0]?.values.map(row => String(row[1])) ?? []
+    if (!assetColumns.includes('storage_path')) db.run("ALTER TABLE user_assets ADD COLUMN storage_path TEXT NOT NULL DEFAULT ''")
+    if (!assetColumns.includes('sha256')) db.run("ALTER TABLE user_assets ADD COLUMN sha256 TEXT NOT NULL DEFAULT ''")
     if (scheduleColumns.length && !scheduleColumns.includes('action')) {
       db.run(`INSERT INTO schedules (id,name,action,run_at,recurrence_minutes,payload,enabled,last_run_at,next_run_at,failure_count,last_error)
         SELECT id,'Migrated schedule','pipeline.stop',scheduled_start,NULL,'{}',1,NULL,scheduled_start,0,NULL FROM schedules_legacy`)

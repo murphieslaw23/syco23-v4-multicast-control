@@ -1,4 +1,4 @@
-import type { DestinationState, OutputProfile } from "../../types";
+import type { DestinationState, OutputProfile, SceneGraph, Template } from "../../types";
 import { buildFfmpegFanoutCommand } from "../ffmpeg/command-builder";
 import { DestinationWorkerManager } from "../ffmpeg/destination-worker-manager";
 import {
@@ -8,6 +8,9 @@ import {
   deleteDestination,
 } from "../dao/destinations";
 import { getAllProfiles, insertProfile } from "../dao/profiles";
+import { deleteTemplate, getAllTemplates, getTemplateById, insertTemplate, updateTemplate } from "../dao/templates";
+import { validateScene } from "../scene/scene-runtime";
+import { getAssetById } from "../dao/userAssets";
 import { getAllStreams, updateStream } from "../dao/streams";
 import {
   getRuntimeStore,
@@ -27,6 +30,7 @@ export interface StartPipelineRequest {
   streamKeys?: Record<string, string>;
   ffmpegPath?: string;
   title?: string;
+  templateId?: string;
 }
 
 export class ControlService {
@@ -52,6 +56,7 @@ export class ControlService {
     const store = getRuntimeStore();
     store.destinations = getAllDestinations(this.persistence.database);
     store.profiles = getAllProfiles(this.persistence.database);
+    store.templates = getAllTemplates(this.persistence.database);
     store.streams = getAllStreams(this.persistence.database).map((item) => ({
       id: item.id,
       title: item.title,
@@ -84,6 +89,31 @@ export class ControlService {
   listProfiles(): OutputProfile[] {
     return structuredClone(getRuntimeStore().profiles);
   }
+  listTemplates(): Template[] { return structuredClone(getRuntimeStore().templates); }
+  getTemplate(id: string): Template {
+    const template = getTemplateById(this.persistence.database, id);
+    if (!template) throw new ApiError("TEMPLATE_NOT_FOUND", "Template not found", 404);
+    return template;
+  }
+  async createTemplate(input: { name: string; provider: Template["provider"]; scene: SceneGraph; isCustom?: boolean }): Promise<Template> {
+    const now = new Date().toISOString();
+    const id = createRuntimeId("template");
+    const template: Template = { id, name: String(input.name || "").trim(), provider: input.provider, scene: validateScene(input.scene), previewUrl: `/api/templates/${encodeURIComponent(id)}/preview.svg`, isCustom: input.isCustom !== false, version: 1, createdAt: now, updatedAt: now };
+    if (!template.name) throw new ApiError("TEMPLATE_NAME_REQUIRED", "Template name is required");
+    await this.persistence.transaction(db => insertTemplate(db, template));
+    getRuntimeStore().templates.unshift(template);
+    this.events.publish("template.created", template);
+    return structuredClone(template);
+  }
+  async patchTemplate(id: string, patch: Partial<Pick<Template,"name"|"provider"|"scene">>): Promise<Template> {
+    const current = this.getTemplate(id);
+    const updated: Template = { ...current, ...patch, scene: patch.scene ? validateScene(patch.scene) : (current.scene || { width:1920,height:1080,background:"#000000",layers:[] }), version: (current.version || 1) + 1, updatedAt: new Date().toISOString() };
+    if (!updated.name.trim()) throw new ApiError("TEMPLATE_NAME_REQUIRED", "Template name is required");
+    await this.persistence.transaction(db => updateTemplate(db,id,{ name:updated.name, provider:updated.provider, scene:updated.scene, version:updated.version, updatedAt:updated.updatedAt }));
+    const index=getRuntimeStore().templates.findIndex(item=>item.id===id); if(index>=0) getRuntimeStore().templates[index]=updated;
+    this.events.publish("template.updated", updated); return structuredClone(updated);
+  }
+  async removeTemplate(id:string):Promise<void> { this.getTemplate(id); await this.persistence.transaction(db=>deleteTemplate(db,id)); getRuntimeStore().templates=getRuntimeStore().templates.filter(item=>item.id!==id); this.events.publish("template.deleted",{id}); }
 
   async createDestination(input: DestinationState): Promise<DestinationState> {
     const destination = { ...input, id: input.id || createRuntimeId("dst") };
@@ -170,6 +200,9 @@ export class ControlService {
           "DESTINATION_REQUIRED",
           "At least one destination is required",
         );
+      const template = request.templateId ? this.getTemplate(request.templateId) : null;
+      const sceneMetadata = { title: getRuntimeStore().metadata.title, artist: getRuntimeStore().metadata.artist, show: getRuntimeStore().metadata.show ?? undefined, listeners: getRuntimeStore().metadata.listeners ?? undefined };
+      const sceneAssets = this.resolveSceneAssets(template?.scene);
       const streamKeys: Record<string, string> = {
         ...(request.streamKeys || {}),
       };
@@ -199,6 +232,9 @@ export class ControlService {
         profiles: getRuntimeStore().profiles,
         streamKeys,
         ffmpegPath: request.ffmpegPath,
+        scene: template?.scene,
+        sceneMetadata,
+        sceneAssets,
       });
       const session = {
         id: createRuntimeId("session"),
@@ -294,6 +330,9 @@ export class ControlService {
         streamKeys,
         ffmpegPath: request.ffmpegPath,
       });
+      const template = request.templateId ? this.getTemplate(request.templateId) : null;
+      const sceneMetadata = { title: getRuntimeStore().metadata.title, artist: getRuntimeStore().metadata.artist, show: getRuntimeStore().metadata.show ?? undefined, listeners: getRuntimeStore().metadata.listeners ?? undefined };
+      const sceneAssets = this.resolveSceneAssets(template?.scene);
       await this.setDestinationRuntimeState(
         selected.map((item) => item.id),
         { status: "connecting", health: "degraded", lastError: reason },
@@ -304,6 +343,9 @@ export class ControlService {
         profiles: getRuntimeStore().profiles,
         streamKeys,
         ffmpegPath: request.ffmpegPath,
+        scene: template?.scene,
+        sceneMetadata,
+        sceneAssets,
       });
       getRuntimeStore().status = {
         live: true,
@@ -433,6 +475,17 @@ export class ControlService {
               ? "degraded"
               : "failed",
     };
+  }
+
+  private resolveSceneAssets(scene?: SceneGraph): Record<string,string> {
+    const result:Record<string,string> = {};
+    for (const layer of scene?.layers || []) {
+      if (layer.type !== "asset" || !layer.assetId) continue;
+      const asset = getAssetById(this.persistence.database, layer.assetId);
+      if (!asset) throw new ApiError("SCENE_ASSET_NOT_FOUND", `Scene asset ${layer.assetId} was not found`, 422);
+      result[layer.assetId] = asset.storagePath;
+    }
+    return result;
   }
 
   status() {

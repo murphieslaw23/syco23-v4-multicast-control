@@ -401,3 +401,24 @@ Preview endpoints:
 - `POST /api/preview/ticket`
 - `GET /api/preview/index.m3u8?ticket=...`
 - `GET /api/preview/segment-000001.ts?ticket=...`
+
+## Scene templates and overlays
+
+The runtime stores versioned scene graphs in SQLite and renders deterministic SVG previews from the same layer model used by FFmpeg. Supported live layers are background/padding, boxes, static text, metadata text and clocks. Managed image assets are accepted through the authenticated asset API and stored outside the public web root with SHA-256 integrity metadata.
+
+Template API:
+
+- `GET /api/templates`
+- `POST /api/templates`
+- `PATCH /api/templates/:id`
+- `DELETE /api/templates/:id`
+- `GET /api/templates/:id/preview.svg`
+
+Asset API:
+
+- `GET /api/assets`
+- `POST /api/assets`
+- `GET /api/assets/:id`
+- `DELETE /api/assets/:id`
+
+Pass `templateId` to `POST /api/pipeline/start` to compile the selected scene into each isolated destination worker's FFmpeg filter chain.

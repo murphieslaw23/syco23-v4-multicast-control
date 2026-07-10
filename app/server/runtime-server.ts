@@ -22,7 +22,8 @@ import { WatchdogRuntime } from "./runtime/watchdog-runtime";
 import { MetadataRuntime } from "./runtime/metadata-runtime";
 import { HlsPreviewRuntime } from "./runtime/hls-preview-runtime";
 import { PreviewTicketStore } from "./runtime/preview-tickets";
-import type { DestinationState, OutputProfile } from "../types";
+import type { DestinationState, OutputProfile, SceneGraph, Template } from "../types";
+import { AssetStore, renderSceneSvg } from "./scene/scene-runtime";
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "0.0.0.0";
@@ -64,6 +65,7 @@ const preview = new HlsPreviewRuntime(events, {
   segmentSeconds: Number(process.env.SYCO_PREVIEW_SEGMENT_SECONDS || 2),
   listSize: Number(process.env.SYCO_PREVIEW_LIST_SIZE || 6),
 });
+const assets = new AssetStore(persistence, process.env.SYCO_ASSET_DIR || join(process.cwd(), "data/assets"));
 const backupRoot = resolve(
   process.env.SYCO_BACKUP_DIR || join(process.cwd(), "data/backups"),
 );
@@ -326,6 +328,43 @@ async function route(
       );
     if (request.method === "GET" && url.pathname === "/api/preview/status")
       return json(response, 200, { ok: true, data: preview.snapshot() }, requestId);
+    if (request.method === "GET" && url.pathname === "/api/templates")
+      return json(response, 200, { ok: true, data: service.listTemplates() }, requestId);
+    if (request.method === "POST" && url.pathname === "/api/templates") {
+      requireRole(context, "admin");
+      const input = await body(request) as { name:string; provider:Template["provider"]; scene:SceneGraph; isCustom?:boolean };
+      const data = await audited(context, "create", "template", null, () => service.createTemplate(input));
+      return json(response, 201, { ok:true, data }, requestId);
+    }
+    const templateMatch = url.pathname.match(/^\/api\/templates\/([^/]+)$/);
+    if (templateMatch && request.method === "PATCH") {
+      requireRole(context, "admin"); const id=decodeURIComponent(templateMatch[1]);
+      const patch=await body(request) as Partial<Pick<Template,"name"|"provider"|"scene">>;
+      const data=await audited(context,"update","template",id,()=>service.patchTemplate(id,patch));
+      return json(response,200,{ok:true,data},requestId);
+    }
+    if (templateMatch && request.method === "DELETE") {
+      requireRole(context,"admin"); const id=decodeURIComponent(templateMatch[1]);
+      await audited(context,"delete","template",id,()=>service.removeTemplate(id));
+      return json(response,204,null,requestId);
+    }
+    const previewMatch=url.pathname.match(/^\/api\/templates\/([^/]+)\/preview\.svg$/);
+    if(previewMatch && request.method === "GET") {
+      const template=service.getTemplate(decodeURIComponent(previewMatch[1]));
+      const svg=renderSceneSvg(template.scene || {width:1920,height:1080,background:"#000000",layers:[]},{ title:metadata.snapshot().metadata?.title, artist:metadata.snapshot().metadata?.artist, show:metadata.snapshot().metadata?.show ?? undefined, listeners:metadata.snapshot().metadata?.listeners ?? undefined });
+      response.writeHead(200,{"content-type":"image/svg+xml; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","x-request-id":requestId}); response.end(svg); return;
+    }
+    if(request.method === "GET" && url.pathname === "/api/assets") return json(response,200,{ok:true,data:assets.list()},requestId);
+    if(request.method === "POST" && url.pathname === "/api/assets") {
+      requireRole(context,"admin"); const input=await body(request,14_000_000) as {filename:string;mimeType:string;base64:string};
+      const created=await audited(context,"create","asset",null,()=>assets.create(input));
+      return json(response,201,{ok:true,data:{...created,storagePath:undefined}},requestId);
+    }
+    const assetMatch=url.pathname.match(/^\/api\/assets\/([^/]+)$/);
+    if(assetMatch && request.method === "GET") {
+      const {asset,bytes}=await assets.bytes(decodeURIComponent(assetMatch[1])); response.writeHead(200,{"content-type":asset.mimeType,"content-length":String(bytes.length),"cache-control":"private, max-age=3600","x-content-type-options":"nosniff","x-request-id":requestId}); response.end(bytes); return;
+    }
+    if(assetMatch && request.method === "DELETE") { requireRole(context,"admin"); const id=decodeURIComponent(assetMatch[1]); await audited(context,"delete","asset",id,()=>assets.remove(id)); return json(response,204,null,requestId); }
     if (request.method === "GET" && url.pathname === "/api/metadata")
       return json(
         response,
@@ -519,7 +558,7 @@ async function route(
 
     if (request.method === "POST" && url.pathname === "/api/pipeline/start") {
       requireRole(context, "operator");
-      const input = (await body(request)) as { inputUrl: string; destinationIds?: string[]; title?: string; ffmpegPath?: string };
+      const input = (await body(request)) as { inputUrl: string; destinationIds?: string[]; title?: string; ffmpegPath?: string; templateId?: string };
       const data = await audited(context, "start", "pipeline", null, async () => {
         const result = await service.startPipeline(input);
         try {
@@ -695,6 +734,7 @@ async function route(
 
 async function main(): Promise<void> {
   await service.initialize();
+  await assets.initialize();
   await metadata.initialize();
   events.subscribe((event) => {
     if (event.type === "destination.worker.cooldown") {

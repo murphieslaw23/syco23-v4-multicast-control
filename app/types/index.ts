@@ -93,6 +93,34 @@ export interface LogEntry {
   message: string
 }
 
+export type SceneLayerType = 'background' | 'box' | 'text' | 'asset' | 'clock' | 'metadata'
+
+export interface SceneLayer {
+  id: string
+  type: SceneLayerType
+  x: number
+  y: number
+  width?: number
+  height?: number
+  zIndex: number
+  opacity?: number
+  visible?: boolean
+  color?: string
+  text?: string
+  fontSize?: number
+  fontWeight?: number
+  align?: 'left' | 'center' | 'right'
+  assetId?: string
+  metadataField?: 'title' | 'artist' | 'show' | 'listeners'
+}
+
+export interface SceneGraph {
+  width: number
+  height: number
+  background: string
+  layers: SceneLayer[]
+}
+
 export interface Template {
   id: string
   name: string
@@ -100,6 +128,10 @@ export interface Template {
   previewUrl: string
   isCustom: boolean
   customBackgroundRef?: string
+  scene?: SceneGraph
+  version?: number
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface TransmissionKit {

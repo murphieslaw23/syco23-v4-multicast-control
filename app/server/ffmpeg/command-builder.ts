@@ -1,4 +1,5 @@
-import type { DestinationState, OutputProfile } from '../../types'
+import type { DestinationState, OutputProfile, SceneGraph } from '../../types'
+import { compileSceneFiltergraph, compileSceneFilterComplex } from '../scene/scene-runtime'
 import { getProviderAdapter } from '../provider-registry'
 
 export interface FfmpegBuildOptions {
@@ -8,6 +9,9 @@ export interface FfmpegBuildOptions {
   streamKeys?: Record<string, string>
   ffmpegPath?: string
   reconnect?: boolean
+  scene?: SceneGraph
+  sceneMetadata?: Record<string, string | number | undefined>
+  sceneAssets?: Record<string, string>
 }
 
 export interface FfmpegCommand {
@@ -62,14 +66,18 @@ export function buildFfmpegFanoutCommand(options: FfmpegBuildOptions): FfmpegCom
     const streamKey = options.streamKeys?.[destination.streamKeyRef]
     const outputUrl = adapter.buildOutputUrl(destination, streamKey)
 
+    const scene = options.scene ? { ...options.scene, width: profile.width, height: profile.height } : null
+    if (scene) {
+      const complex = compileSceneFilterComplex(scene, options.sceneMetadata, options.sceneAssets, String(args.length))
+      args.push('-filter_complex', complex.graph, '-map', `[${complex.outputLabel}]`, '-map', '0:a:0?')
+    } else {
+      args.push('-map', '0:v:0?', '-map', '0:a:0?', '-vf', `scale=${profile.width}:${profile.height}:force_original_aspect_ratio=decrease,pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:color=black`)
+    }
     args.push(
-      '-map', '0:v:0?',
-      '-map', '0:a:0?',
       '-c:v', profile.codec || 'libx264',
       '-preset', 'veryfast',
       '-pix_fmt', 'yuv420p',
       '-r', String(profile.fps),
-      '-s', `${profile.width}x${profile.height}`,
       '-b:v', `${profile.videoBitrate}k`,
       '-maxrate', `${profile.videoBitrate}k`,
       '-bufsize', `${profile.videoBitrate * 2}k`,
