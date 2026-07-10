@@ -20,6 +20,8 @@ import { ApiError, asApiError } from "./runtime/errors";
 import { WebSocketTicketStore } from "./runtime/ws-tickets";
 import { WatchdogRuntime } from "./runtime/watchdog-runtime";
 import { MetadataRuntime } from "./runtime/metadata-runtime";
+import { HlsPreviewRuntime } from "./runtime/hls-preview-runtime";
+import { PreviewTicketStore } from "./runtime/preview-tickets";
 import type { DestinationState, OutputProfile } from "../types";
 
 const port = Number(process.env.PORT || 3000);
@@ -31,6 +33,7 @@ const service = new ControlService(persistence, events);
 const operations = new OperationsStore(persistence, events);
 const scheduler = new SchedulerRuntime(operations, service, events);
 const wsTickets = new WebSocketTicketStore();
+const previewTickets = new PreviewTicketStore();
 const watchdog = new WatchdogRuntime(service, persistence, operations, events, {
   intervalMs: Number(process.env.SYCO_WATCHDOG_INTERVAL_MS || 2000),
   startupGraceMs: Number(process.env.SYCO_WATCHDOG_STARTUP_GRACE_MS || 20000),
@@ -49,6 +52,17 @@ const metadata = new MetadataRuntime(persistence, events, {
   timeoutMs: Number(process.env.SYCO_METADATA_TIMEOUT_MS || 5000),
   staleAfterMs: Number(process.env.SYCO_METADATA_STALE_MS || 60000),
   maxBackoffMs: Number(process.env.SYCO_METADATA_MAX_BACKOFF_MS || 300000),
+});
+const preview = new HlsPreviewRuntime(events, {
+  rootDir: process.env.SYCO_PREVIEW_DIR || join(process.cwd(), "data/preview"),
+  ffmpegPath: process.env.SYCO_FFMPEG_PATH,
+  width: Number(process.env.SYCO_PREVIEW_WIDTH || 1280),
+  height: Number(process.env.SYCO_PREVIEW_HEIGHT || 720),
+  fps: Number(process.env.SYCO_PREVIEW_FPS || 25),
+  videoBitrateKbps: Number(process.env.SYCO_PREVIEW_VIDEO_BITRATE || 1800),
+  audioBitrateKbps: Number(process.env.SYCO_PREVIEW_AUDIO_BITRATE || 128),
+  segmentSeconds: Number(process.env.SYCO_PREVIEW_SEGMENT_SECONDS || 2),
+  listSize: Number(process.env.SYCO_PREVIEW_LIST_SIZE || 6),
 });
 const backupRoot = resolve(
   process.env.SYCO_BACKUP_DIR || join(process.cwd(), "data/backups"),
@@ -126,6 +140,8 @@ function mime(path: string): string {
         ".svg": "image/svg+xml",
         ".png": "image/png",
         ".json": "application/json",
+        ".m3u8": "application/vnd.apple.mpegurl",
+        ".ts": "video/mp2t",
       } as Record<string, string>
     )[extname(path)] || "application/octet-stream"
   );
@@ -202,6 +218,38 @@ async function route(
     `http://${request.headers.host || "localhost"}`,
   );
   if (!url.pathname.startsWith("/api/")) return serveStatic(request, response);
+  const previewAssetMatch = url.pathname.match(/^\/api\/preview\/(index\.m3u8|segment-\d+\.ts)$/);
+  if (request.method === "GET" && previewAssetMatch) {
+    const ticket = url.searchParams.get("ticket");
+    if (!previewTickets.validate(ticket)) {
+      return json(response, 401, { ok: false, error: { code: "PREVIEW_TICKET_INVALID", message: "Preview ticket is invalid or expired", requestId } }, requestId);
+    }
+    const name = previewAssetMatch[1];
+    const path = join(preview.rootDir, name);
+    if (!existsSync(path)) {
+      return json(response, 404, { ok: false, error: { code: "PREVIEW_ASSET_NOT_READY", message: "Preview asset is not available", requestId } }, requestId);
+    }
+    if (name === "index.m3u8") {
+      const playlist = await readFile(path, "utf8");
+      const encodedTicket = encodeURIComponent(ticket || "");
+      const rewritten = playlist.replace(/^(segment-\d+\.ts)$/gm, `$1?ticket=${encodedTicket}`);
+      response.writeHead(200, {
+        "content-type": "application/vnd.apple.mpegurl",
+        "cache-control": "no-store, no-cache, must-revalidate",
+        "access-control-allow-origin": "same-origin",
+        "x-request-id": requestId,
+      });
+      response.end(rewritten);
+      return;
+    }
+    response.writeHead(200, {
+      "content-type": "video/mp2t",
+      "cache-control": "private, max-age=30",
+      "x-request-id": requestId,
+    });
+    createReadStream(path).pipe(response);
+    return;
+  }
   if (request.method === "GET" && url.pathname === "/api/health")
     return json(
       response,
@@ -269,6 +317,15 @@ async function route(
         { ok: true, data: wsTickets.issue(context) },
         requestId,
       );
+    if (request.method === "POST" && url.pathname === "/api/preview/ticket")
+      return json(
+        response,
+        201,
+        { ok: true, data: previewTickets.issue(context.role) },
+        requestId,
+      );
+    if (request.method === "GET" && url.pathname === "/api/preview/status")
+      return json(response, 200, { ok: true, data: preview.snapshot() }, requestId);
     if (request.method === "GET" && url.pathname === "/api/metadata")
       return json(
         response,
@@ -462,22 +519,28 @@ async function route(
 
     if (request.method === "POST" && url.pathname === "/api/pipeline/start") {
       requireRole(context, "operator");
-      const input = (await body(request)) as never;
-      return json(response, 202, {
-        ok: true,
-        data: await audited(context, "start", "pipeline", null, () =>
-          service.startPipeline(input),
-        ),
+      const input = (await body(request)) as { inputUrl: string; destinationIds?: string[]; title?: string; ffmpegPath?: string };
+      const data = await audited(context, "start", "pipeline", null, async () => {
+        const result = await service.startPipeline(input);
+        try {
+          await preview.start(input.inputUrl);
+        } catch (error) {
+          await service.stopPipeline();
+          throw error;
+        }
+        return result;
       });
+      return json(response, 202, { ok: true, data }, requestId);
     }
     if (request.method === "POST" && url.pathname === "/api/pipeline/stop") {
       requireRole(context, "operator");
-      return json(response, 200, {
-        ok: true,
-        data: await audited(context, "stop", "pipeline", null, () =>
-          service.stopPipeline(),
-        ),
+      const data = await audited(context, "stop", "pipeline", null, async () => {
+        const result = await service.stopPipeline();
+        await preview.stop();
+        await preview.cleanup();
+        return result;
       });
+      return json(response, 200, { ok: true, data }, requestId);
     }
 
     if (request.method === "GET" && url.pathname === "/api/schedules")
@@ -689,8 +752,7 @@ async function main(): Promise<void> {
       scheduler.stop();
       watchdog.stop();
       metadata.stop();
-      void service
-        .stopPipeline()
+      void Promise.allSettled([service.stopPipeline(), preview.stop()])
         .finally(() => server.close(() => process.exit(0)));
     });
 }

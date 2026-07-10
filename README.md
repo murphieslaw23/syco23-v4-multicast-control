@@ -390,3 +390,14 @@ Endpoints:
 Each configured output is executed by an independent FFmpeg child process. A provider failure no longer terminates healthy outputs. Worker state and metrics are available from `GET /api/destination-workers`; operators can restart a single worker with `POST /api/destination-workers/:id/restart`, and persistent lifecycle history is available from `GET /api/destination-workers/:id/events`.
 
 Recovery policy is configured with `SYCO_DESTINATION_MAX_RESTARTS`, `SYCO_DESTINATION_BACKOFF_MS`, and `SYCO_DESTINATION_COOLDOWN_MS`. Exhausted workers enter cooldown and create a critical incident without taking down remaining live destinations.
+
+## Authenticated HLS preview
+
+Starting a pipeline also starts an isolated low-latency HLS preview worker. The rolling playlist and MPEG-TS segments are stored under `SYCO_PREVIEW_DIR`, served only through short-lived preview tickets, and removed when the pipeline stops. The browser player uses `hls.js` with native Safari HLS fallback and exposes play, mute, volume, buffering, and fatal playback states.
+
+Preview endpoints:
+
+- `GET /api/preview/status`
+- `POST /api/preview/ticket`
+- `GET /api/preview/index.m3u8?ticket=...`
+- `GET /api/preview/segment-000001.ts?ticket=...`

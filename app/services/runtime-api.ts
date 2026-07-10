@@ -38,10 +38,22 @@ export interface RuntimeStatus {
   destinations: number
 }
 
+export interface PreviewStatus {
+  state: 'idle' | 'starting' | 'running' | 'stopping' | 'failed'
+  pid: number | null
+  startedAt: string | null
+  lastSegmentAt: string | null
+  playlistReady: boolean
+  segmentCount: number
+  lastError: string | null
+}
+
 export const runtimeApi = {
   status: () => request<RuntimeStatus>('/api/status'),
   destinations: () => request<DestinationState[]>('/api/destinations'),
   profiles: () => request<OutputProfile[]>('/api/profiles'),
+  previewStatus: () => request<PreviewStatus>('/api/preview/status'),
+  previewTicket: () => request<{ ticket: string; expiresAt: string }>('/api/preview/ticket', { method: 'POST' }),
   startPipeline: (config: PipelineConfig) => request<RuntimeStatus['supervisor']>('/api/pipeline/start', {
     method: 'POST',
     body: JSON.stringify({ inputUrl: config.sourceUrl, destinationIds: config.destinations.map((item) => item.id), title: 'SYCO23 Transmission' }),
