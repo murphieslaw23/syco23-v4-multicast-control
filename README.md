@@ -338,3 +338,33 @@ Runtime endpoints:
 State is persisted as a SQLite database at `SYCO_DB_PATH`. Writes use a transaction followed by an atomic temporary-file rename. Docker persists this file in the `syco23-data` volume.
 
 When `SYCO_API_TOKEN` is configured, HTTP clients must send `Authorization: Bearer <token>`. The browser event client uses the same runtime token from `window.SYCO_CONFIG.apiToken`.
+
+## Operations API
+
+The production runtime supports persistent schedules, audit history, incidents, backups, and role-based access control.
+
+Roles:
+
+- `viewer`: read status, destinations, profiles, sessions, logs, schedules, and incidents.
+- `operator`: viewer permissions plus pipeline control, schedule management, and incident resolution.
+- `admin`: unrestricted access, including destination/profile configuration, audit history, and backup/restore.
+
+Configure `SYCO_ADMIN_TOKEN`, `SYCO_OPERATOR_TOKEN`, and `SYCO_VIEWER_TOKEN`. `SYCO_API_TOKEN` remains an administrator-token compatibility alias. When no token is configured, the runtime permits local development access as an administrator; production deployments must set tokens.
+
+Operational endpoints include:
+
+```text
+GET    /api/me
+GET    /api/sessions
+GET    /api/audit
+GET    /api/schedules
+POST   /api/schedules
+DELETE /api/schedules/:id
+GET    /api/incidents
+POST   /api/incidents/:id/resolve
+POST   /api/backups
+GET    /api/backups/export
+POST   /api/backups/restore
+```
+
+The scheduler executes due jobs once per second and persists completion, retry diagnostics, recurrence, and failures. Failed scheduled actions open incidents automatically. Existing databases using the earlier schedule schema are migrated at startup.
