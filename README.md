@@ -426,3 +426,9 @@ Pass `templateId` to `POST /api/pipeline/start` to compile the selected scene in
 ## Operator scene editor
 
 The template gallery now uses the persistent runtime API. Operators can create and edit versioned scene graphs, upload managed PNG/JPEG/WebP/SVG assets, drag layers on a scaled canvas, edit exact geometry and opacity, switch between 16:9, 9:16, and square provider presets, inspect safe areas, and select a saved template when starting a transmission. The selected template ID is passed to the runtime and compiled into every destination worker's FFmpeg filtergraph.
+
+## Provider policy and telemetry APIs
+
+The runtime exposes provider capability/profile policies at `GET /api/providers` and live host telemetry at `GET /api/system/metrics`. Output profiles are validated against the selected provider before persistence and again before FFmpeg worker startup.
+
+Operational logs support server-side filtering and pagination through `GET /api/logs` using `limit`, `offset`, `level`, `source`, `search`, `from`, and `to`. Operators can export the filtered result from `GET /api/logs/export.csv`.
