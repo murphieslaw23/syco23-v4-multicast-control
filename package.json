@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "vite",
+    "dev": "tsx app/server/runtime-server.ts",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
@@ -16,16 +16,22 @@
     "docker:build": "docker build -t syco23/multicast-control:local .",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
-    "pm2:start": "npm run build && pm2 start ecosystem.config.cjs"
+    "pm2:start": "npm run build && pm2 start ecosystem.config.cjs",
+    "dev:ui": "vite",
+    "dev:server": "tsx watch app/server/runtime-server.ts",
+    "start": "tsx app/server/runtime-server.ts"
   },
   "dependencies": {
     "@types/sql.js": "^1.4.11",
     "sql.js": "^1.14.1",
-    "vue": "^3.4.0"
+    "vue": "^3.4.0",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.42.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.12.0",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "@vitejs/plugin-vue": "^6.0.7",
@@ -34,6 +40,7 @@
     "eslint": "^8.57.0",
     "eslint-plugin-vue": "^9.23.0",
     "jsdom": "^24.0.0",
+    "tsx": "^4.23.0",
     "typescript": "^5.4.0",
     "vite": "^8.1.3",
     "vitest": "^4.1.10",

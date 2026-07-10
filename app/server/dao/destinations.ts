@@ -31,29 +31,29 @@ export function updateDestination(db: SqlJsDatabase, id: string, patch: Partial<
   const fields: string[] = []
   const values: unknown[] = []
 
-  const fieldMap: Record<string, (v: unknown) => unknown> = {
-    provider: (v) => v,
-    label: (v) => v,
-    protocol: (v) => v,
-    endpointUrl: (v) => v,
-    streamKeyRef: (v) => v,
-    status: (v) => v,
-    health: (v) => v,
-    lastHandshakeAt: (v) => v,
-    lastError: (v) => v,
-    videoProfile: (v) => v,
-    audioProfile: (v) => v,
-    monitorMode: (v) => v,
-    hlsPlaybackUrl: (v) => v,
-    requiresManualPlatformSetup: (v) => (v ? 1 : 0),
-    transmissionKitId: (v) => v,
-    notes: (v) => v,
+  const fieldMap: Record<string, { column: string; transform: (value: unknown) => unknown }> = {
+    provider: { column: 'provider', transform: (value) => value },
+    label: { column: 'label', transform: (value) => value },
+    protocol: { column: 'protocol', transform: (value) => value },
+    endpointUrl: { column: 'endpoint_url', transform: (value) => value },
+    streamKeyRef: { column: 'stream_key_ref', transform: (value) => value },
+    status: { column: 'status', transform: (value) => value },
+    health: { column: 'health', transform: (value) => value },
+    lastHandshakeAt: { column: 'last_handshake_at', transform: (value) => value },
+    lastError: { column: 'last_error', transform: (value) => value },
+    videoProfile: { column: 'video_profile', transform: (value) => value },
+    audioProfile: { column: 'audio_profile', transform: (value) => value },
+    monitorMode: { column: 'monitor_mode', transform: (value) => value },
+    hlsPlaybackUrl: { column: 'hls_playback_url', transform: (value) => value },
+    requiresManualPlatformSetup: { column: 'requires_manual_setup', transform: (value) => value ? 1 : 0 },
+    transmissionKitId: { column: 'transmission_kit_id', transform: (value) => value },
+    notes: { column: 'notes', transform: (value) => value },
   }
 
-  for (const [key, transform] of Object.entries(fieldMap)) {
+  for (const [key, mapping] of Object.entries(fieldMap)) {
     if (key in patch) {
-      fields.push(`${key} = ?`)
-      values.push(transform((patch as Record<string, unknown>)[key]))
+      fields.push(`${mapping.column} = ?`)
+      values.push(mapping.transform((patch as Record<string, unknown>)[key]))
     }
   }
 

@@ -311,3 +311,30 @@ syco23-multicast-control/
 ## License
 
 MIT
+
+## Production control runtime
+
+The repository now ships one Node runtime that serves the built Vue application and owns the persistent control API, WebSocket event stream, and FFmpeg child process.
+
+```bash
+npm ci
+npm run build
+SYCO_API_TOKEN='replace-with-a-long-random-token' npm start
+```
+
+Runtime endpoints:
+
+- `GET /api/health`
+- `GET /api/status`
+- `GET|POST /api/destinations`
+- `PATCH|DELETE /api/destinations/:id`
+- `GET|POST /api/profiles`
+- `POST /api/pipeline/start`
+- `POST /api/pipeline/stop`
+- `GET /api/logs`
+- `GET /api/events`
+- `WS /api/events/ws`
+
+State is persisted as a SQLite database at `SYCO_DB_PATH`. Writes use a transaction followed by an atomic temporary-file rename. Docker persists this file in the `syco23-data` volume.
+
+When `SYCO_API_TOKEN` is configured, HTTP clients must send `Authorization: Bearer <token>`. The browser event client uses the same runtime token from `window.SYCO_CONFIG.apiToken`.
