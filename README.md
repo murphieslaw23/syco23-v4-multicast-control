@@ -422,3 +422,7 @@ Asset API:
 - `DELETE /api/assets/:id`
 
 Pass `templateId` to `POST /api/pipeline/start` to compile the selected scene into each isolated destination worker's FFmpeg filter chain.
+
+## Operator scene editor
+
+The template gallery now uses the persistent runtime API. Operators can create and edit versioned scene graphs, upload managed PNG/JPEG/WebP/SVG assets, drag layers on a scaled canvas, edit exact geometry and opacity, switch between 16:9, 9:16, and square provider presets, inspect safe areas, and select a saved template when starting a transmission. The selected template ID is passed to the runtime and compiled into every destination worker's FFmpeg filtergraph.

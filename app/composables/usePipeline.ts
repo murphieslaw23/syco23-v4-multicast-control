@@ -8,6 +8,7 @@ export interface PipelineConfig {
   destinations: DestinationState[]
   videoProfile: string
   audioProfile: string
+  templateId?: string | null
 }
 
 export interface PipelineStatus {

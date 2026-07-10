@@ -1,4 +1,4 @@
-import type { DestinationState, OutputProfile } from '../types'
+import type { DestinationState, OutputProfile, Provider, SceneGraph, Template } from '../types'
 import type { PipelineConfig, PipelineStatus } from '../composables/usePipeline'
 
 interface ApiFailure { code: string; message: string; requestId?: string }
@@ -48,15 +48,24 @@ export interface PreviewStatus {
   lastError: string | null
 }
 
+export interface ManagedAsset { id: string; filename: string; mimeType: string; size: number; sha256: string; createdAt: string }
+
 export const runtimeApi = {
   status: () => request<RuntimeStatus>('/api/status'),
   destinations: () => request<DestinationState[]>('/api/destinations'),
   profiles: () => request<OutputProfile[]>('/api/profiles'),
+  templates: () => request<Template[]>('/api/templates'),
+  createTemplate: (input: { name: string; provider: Provider; scene: SceneGraph; isCustom?: boolean }) => request<Template>('/api/templates', { method: 'POST', body: JSON.stringify(input) }),
+  updateTemplate: (id: string, patch: Partial<Pick<Template, 'name' | 'provider' | 'scene'>>) => request<Template>(`/api/templates/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  deleteTemplate: (id: string) => request<void>(`/api/templates/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  assets: () => request<ManagedAsset[]>('/api/assets'),
+  uploadAsset: (input: { filename: string; mimeType: string; base64: string }) => request<ManagedAsset>('/api/assets', { method: 'POST', body: JSON.stringify(input) }),
+  deleteAsset: (id: string) => request<void>(`/api/assets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   previewStatus: () => request<PreviewStatus>('/api/preview/status'),
   previewTicket: () => request<{ ticket: string; expiresAt: string }>('/api/preview/ticket', { method: 'POST' }),
   startPipeline: (config: PipelineConfig) => request<RuntimeStatus['supervisor']>('/api/pipeline/start', {
     method: 'POST',
-    body: JSON.stringify({ inputUrl: config.sourceUrl, destinationIds: config.destinations.map((item) => item.id), title: 'SYCO23 Transmission' }),
+    body: JSON.stringify({ inputUrl: config.sourceUrl, destinationIds: config.destinations.map((item) => item.id), title: 'SYCO23 Transmission', templateId: config.templateId || undefined }),
   }),
   stopPipeline: () => request<RuntimeStatus['supervisor']>('/api/pipeline/stop', { method: 'POST' }),
 }
