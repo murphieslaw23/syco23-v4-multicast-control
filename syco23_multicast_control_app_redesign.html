@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SYCO23 v4 Broadcast Control Deck</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts for brutalist mono & tech display -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Mono:wght@400;500;700&family=Oswald:wght@500;700&display=swap" rel="stylesheet">
+  <!-- Vue 3 Global Build -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['"Fira Mono"', 'monospace'],
+            display: ['"Oswald"', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Dark mineral, worn metal finishes */
+    body {
+      background-color: #050506;
+      background-image: repeating-linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.01) 0px,
+        rgba(255, 255, 255, 0.01) 2px,
+        transparent 2px,
+        transparent 4px
+      );
+      color: #ded9e2;
+      font-family: 'Fira Mono', monospace;
+    }
+    
+    /* Hardware paneling logic */
+    .plate-base {
+      background: linear-gradient(180deg, #121115 0%, #0d0c0f 100%);
+      border: 1px solid #232128;
+      border-top: 1px solid #312e38;
+      box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.8);
+    }
+    .plate-raised {
+      background: #18161b;
+      border: 1px solid #27252c;
+      border-bottom: 2px solid #111014;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 2px 4px rgba(0, 0, 0, 0.5);
+    }
+    .plate-sunken {
+      background-color: #070608;
+      border: 1px solid #1c1a20;
+      border-top: 2px solid #000;
+      box-shadow: inset 0 4px 8px rgba(0, 0, 0, 0.9);
+    }
+    
+    /* Mechanical Button styling */
+    .btn-mech {
+      background: #1a181e;
+      border: 1px solid #2d2a35;
+      border-bottom: 3px solid #0a090c;
+      transition: all 0.05s ease-in-out;
+    }
+    .btn-mech:active:not(:disabled) {
+      border-bottom-width: 1px;
+      transform: translateY(2px);
+    }
+    
+    /* Machined Screws */
+    .screw {
+      position: absolute;
+      width: 6px; height: 6px;
+      background: #0f0e12;
+      border: 1px solid #2a2730;
+      border-radius: 50%;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.8);
+    }
+    .screw::after {
+      content: '';
+      position: absolute;
+      top: 2px; left: 1px; right: 1px; height: 1px;
+      background: #2a2730;
+      transform: rotate(45deg);
+    }
+
+    /* Scrollbar Styling */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #070608; border-left: 1px solid #1c1a20; }
+    ::-webkit-scrollbar-thumb { background: #232128; border-radius: 0; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+    
+    /* CRT Scanline Overlay */
+    .scanlines {
+      background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1));
+      background-size: 100% 4px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="h-full selection:bg-[var(--accent)] selection:text-black select-none overflow-hidden">
+
+  <div id="app" :style="cssProps" class="h-full flex flex-col justify-between">
+
+    <!-- TOP HEADER / EDGE RACK -->
+    <header class="bg-[#0b0a0d] border-b-2 border-[#1c1a20] px-4 py-2 flex items-center justify-between z-10 flex-shrink-0 shadow-lg relative">
+      <div class="absolute bottom-0 left-0 w-full h-[1px] bg-white/5"></div>
+      
+      <div class="flex items-center gap-6">
+        <!-- Rigid Brand Block -->
+        <div class="flex items-center gap-3 bg-black px-4 py-1.5 border border-[#232128] rounded-sm relative overflow-hidden">
+          <div class="absolute inset-0 bg-[var(--accent)] opacity-10"></div>
+          <svg class="w-6 h-6 text-[var(--accent)] relative z-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+          </svg>
+          <div class="relative z-10 flex flex-col justify-center">
+            <span class="font-display text-xl tracking-widest font-extrabold text-white leading-none">SYCO23<span class="text-[var(--accent)] font-mono text-[10px] ml-1 align-top">v4.2</span></span>
+            <span class="text-[8px] text-zinc-500 font-mono uppercase tracking-[0.2em] leading-none mt-1">Broadcast Control</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ACTIVE KEY ACCENT SELECTOR & SYSTEM MODES -->
+      <div class="flex items-center gap-4">
+        <!-- Watchdog Status -->
+        <div class="hidden md:flex items-center gap-2 px-3 py-1 bg-black border border-zinc-800 text-[9px] uppercase font-bold tracking-widest text-zinc-400">
+          <span>Sys Watchdog:</span>
+          <span class="w-1.5 h-1.5 rounded-none" :class="isLive ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-600'"></span>
+          <span :class="isLive ? 'text-emerald-500' : 'text-zinc-600'">{{ isLive ? 'Engaged' : 'Idle' }}</span>
+        </div>
+
+        <div class="flex items-center gap-2 bg-[#121115] border border-[#1c1a20] p-1 rounded-sm">
+          <span class="text-[8px] text-zinc-500 font-bold uppercase pl-2 pr-1 tracking-widest">Accent Core:</span>
+          <div class="flex gap-1.5">
+            <button 
+              v-for="color in accentOptions" 
+              :key="color.name" 
+              @click="changeAccent(color)"
+              :title="color.name"
+              class="w-3.5 h-3.5 rounded-sm border transition-all duration-150 relative"
+              :class="[
+                activeAccent.name === color.name ? 'border-white scale-125 z-10' : 'border-transparent opacity-40 hover:opacity-100'
+              ]"
+              :style="{ backgroundColor: color.hex }"
+            ></button>
+          </div>
+        </div>
+
+        <!-- TV Mode Indicator -->
+        <button 
+          @click="toggleTvMode"
+          class="btn-mech flex items-center gap-2 px-3 py-1.5 text-[9px] uppercase font-bold tracking-wider"
+          :class="isTvMode ? 'text-[var(--accent)] border-[var(--accent)]' : 'text-zinc-400'"
+        >
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+          {{ isTvMode ? 'Low-Resource Active' : 'Render Engine On' }}
+        </button>
+      </div>
+    </header>
+
+    <!-- 3-COLUMN MASTER CONTROL GRID -->
+    <main class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 p-3 overflow-hidden relative">
+
+      <!-- ========================================== -->
+      <!-- LEFT COLUMN: INGEST & MASTER ARM (COL 1-3) -->
+      <!-- ========================================== -->
+      <section class="lg:col-span-3 flex flex-col gap-3 h-full overflow-y-auto pr-1">
+        
+        <!-- MODULE 1: SOURCE INGEST -->
+        <div class="plate-base rounded-sm p-3 relative flex flex-col">
+          <div class="screw top-1.5 left-1.5"></div><div class="screw top-1.5 right-1.5"></div>
+          
+          <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-300 border-b border-[#232128] pb-2 mb-3 px-2">
+            <span class="w-1.5 h-1.5 bg-[var(--accent)] rounded-none"></span>
+            01. Pipeline Ingest
+          </div>
+
+          <div class="space-y-3 px-1">
+            <div>
+              <label class="text-[8px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">Source Interface</label>
+              <select 
+                v-model="activeSource" 
+                @change="handleSourceChange"
+                class="w-full bg-[#070608] border border-[#27252c] text-[10px] font-bold p-2 text-white focus:outline-none focus:border-[var(--accent)] transition-colors"
+              >
+                <option value="synth-ritual">DRONE: THE RITUAL</option>
+                <option value="synth-warehouse">ACID: WAREHOUSE 138</option>
+                <option value="url">EXT: STREAM SERVER</option>
+                <option value="upload">LOCAL: TRANSCODE BIN</option>
+              </select>
+            </div>
+
+            <!-- URL Ingest Field -->
+            <div v-if="activeSource === 'url'" class="bg-black p-2 border border-[#27252c]">
+              <span class="text-[8px] font-bold text-zinc-500 block mb-1 tracking-widest">SHOUTCAST ADDR:</span>
+              <input 
+                v-model="customUrl" 
+                type="text" 
+                class="w-full bg-[#070608] border border-[#27252c] p-1.5 text-[10px] text-[var(--accent)] focus:outline-none focus:border-[var(--accent)] font-mono"
+                placeholder="http://..."
+              />
+            </div>
+
+            <!-- Local File Upload Field -->
+            <div v-if="activeSource === 'upload'" class="bg-black p-2 border border-[#27252c]">
+              <span class="text-[8px] font-bold text-zinc-500 block mb-1 tracking-widest">BUFFER TRANSCODER:</span>
+              <input 
+                type="file" 
+                accept="audio/*" 
+                @change="handleFileUpload"
+                class="w-full text-[9px] text-zinc-400 file:mr-2 file:py-1 file:px-2 file:border file:border-[#27252c] file:bg-[#121115] file:text-white file:text-[9px] file:uppercase file:font-extrabold cursor-pointer"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- MODULE 2: AUDIO DSP HARDWARE -->
+        <div class="plate-base rounded-sm p-3 relative flex-1">
+          <div class="screw top-1.5 left-1.5"></div><div class="screw top-1.5 right-1.5"></div>
+          
+          <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-300 border-b border-[#232128] pb-2 mb-3 px-2">
+            <span class="w-1.5 h-1.5 bg-[var(--accent)] rounded-none"></span>
+            02. DSP & Amplification
+          </div>
+
+          <div class="space-y-4 px-1">
+            <!-- Low Pass Filter -->
+            <div>
+              <div class="flex justify-between items-end mb-1">
+                <label class="text-[8px] font-bold text-zinc-500 uppercase tracking-widest block">Low-Pass Filter</label>
+                <span class="text-[9px] text-[var(--accent)] font-bold">{{ lowPassFreq >= 20000 ? 'BYPASS' : lowPassFreq + ' Hz' }}</span>
+              </div>
+              <input 
+                type="range" 
+                min="80" 
+                max="20000" 
+                step="10" 
+                v-model.number="lowPassFreq" 
+                @input="handleLowPassChange"
+                class="w-full accent-[var(--accent)] h-1 bg-black outline-none appearance-none cursor-pointer border border-[#27252c]"
+              />
+              <div class="flex justify-between text-[7px] text-zinc-600 mt-1 font-bold">
+                <span>SUB</span>
+                <span>MID</span>
+                <span>OFF</span>
+              </div>
+            </div>
+
+            <!-- Pre-Amp Gain -->
+            <div class="pt-2 border-t border-[#1c1a20]">
+              <div class="flex justify-between items-end mb-1">
+                <label class="text-[8px] font-bold text-zinc-500 uppercase tracking-widest block">Pre-Amp Gain</label>
+                <span class="text-[9px] text-white font-bold">{{ (gainValue * 10).toFixed(1) }} dB</span>
+              </div>
+              <input 
+                type="range" 
+                min="0.1" 
+                max="3.0" 
+                step="0.1" 
+                v-model.number="gainValue" 
+                @input="handleGainChange"
+                class="w-full accent-[var(--accent)] h-1 bg-black outline-none appearance-none cursor-pointer border border-[#27252c]"
+              />
+            </div>
+
+            <!-- Monitor Audio Toggle -->
+            <div class="pt-2">
+              <button 
+                @click="toggleMute"
+                class="btn-mech w-full py-2 px-3 text-[9px] font-extrabold uppercase tracking-widest flex items-center justify-center gap-2"
+                :class="isMuted ? 'bg-red-950/30 text-red-500 border-red-900/50' : 'bg-[#121115] text-zinc-300'"
+              >
+                <span v-if="isMuted">🔇 Monitor Muted</span>
+                <span v-else>🔊 Monitor Active</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODULE 3: MASTER SWITCHBOARD -->
+        <div class="plate-base rounded-sm p-4 relative border-t-4" :style="{ borderTopColor: isLive ? '#10b981' : isArmed ? 'var(--accent)' : '#232128' }">
+          <div class="flex flex-col gap-3">
+            <div class="flex justify-between items-center bg-black p-2 border border-[#27252c]">
+              <div class="flex flex-col">
+                <span class="text-[10px] font-bold text-white uppercase tracking-widest">Master Arm</span>
+                <span class="text-[7px] text-zinc-500 uppercase tracking-widest">Unlock Relays</span>
+              </div>
+              <button 
+                @click="toggleArm" 
+                class="w-14 h-6 rounded-none p-0.5 border border-zinc-700 transition-colors duration-200 relative"
+                :class="isArmed ? 'bg-[var(--accent)]' : 'bg-[#1a181e]'"
+              >
+                <div class="absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-zinc-200 border border-zinc-800 transition-transform duration-200 shadow-sm"
+                     :class="isArmed ? 'translate-x-8' : 'translate-x-0.5'"></div>
+              </button>
+            </div>
+
+            <button 
+              @click="toggleLaunchIngest"
+              :disabled="!isArmed"
+              class="btn-mech w-full py-4 text-sm font-display tracking-widest font-extrabold uppercase flex flex-col items-center justify-center gap-1 border-2"
+              :class="[
+                isLive 
+                  ? 'bg-red-900 border-red-500 text-white shadow-[0_0_15px_rgba(220,38,38,0.5)]' 
+                  : isArmed 
+                    ? 'bg-[var(--accent)] border-white/20 text-black shadow-[0_0_15px_var(--accent-dim)]' 
+                    : 'bg-[#0a090c] border-[#1c1a20] text-zinc-600 cursor-not-allowed'
+              ]"
+            >
+              <span>{{ isLive ? 'HALT ALL TRANSMISSION' : 'DEPLOY MULTICAST' }}</span>
+              <span class="text-[7px] font-mono tracking-[0.3em] opacity-70">
+                {{ isLive ? 'SYSTEM IS HOT' : (isArmed ? 'AWAITING FIRE COMMAND' : 'SAFETY SHROUD LOCKED') }}
+              </span>
+            </button>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ========================================== -->
+      <!-- CENTER COLUMN: MONITOR & TEMPLATES (COL 4-8) -->
+      <!-- ========================================== -->
+      <section class="lg:col-span-5 flex flex-col gap-3 h-full overflow-hidden">
+        
+        <!-- MODULE 4: PROGRAM MONITOR (The Core) -->
+        <div class="plate-base rounded-sm p-3 pb-1 flex flex-col shadow-[0_0_30px_rgba(0,0,0,0.8)] relative border border-zinc-800 border-t-zinc-700">
+          <div class="screw top-1.5 left-1.5"></div><div class="screw top-1.5 right-1.5"></div>
+          
+          <div class="flex items-center justify-between px-2 mb-2">
+            <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-300">
+              <span class="w-1.5 h-1.5 bg-emerald-500 rounded-none animate-pulse"></span>
+              PGM OUT // Preview Monitor
+            </div>
+            <div class="text-[9px] font-mono font-bold text-zinc-500">
+              {{ currentFormat }}
+            </div>
+          </div>
+
+          <!-- Video Monitor Screen - Heavy CRT Frame -->
+          <div class="relative bg-[#030304] border-4 border-[#0a090c] rounded-sm overflow-hidden aspect-video w-full flex flex-col items-center justify-center shadow-[inset_0_0_40px_rgba(0,0,0,1)]">
+            
+            <div class="absolute inset-0 scanlines z-20"></div>
+
+            <canvas 
+              v-show="!isTvMode"
+              ref="visualizerCanvas" 
+              class="absolute inset-0 w-full h-full object-contain cursor-crosshair z-10"
+            ></canvas>
+
+            <!-- TV Mode View -->
+            <div v-show="isTvMode" class="absolute inset-0 bg-[#070608] p-6 flex flex-col justify-between text-[#8a8194] z-10">
+              <div class="absolute inset-0 border border-zinc-900 grid grid-cols-6 grid-rows-6 pointer-events-none">
+                <div v-for="n in 36" class="border-[0.5px] border-zinc-950/60"></div>
+              </div>
+              <div class="flex justify-between items-start z-10">
+                <div class="text-[9px] tracking-widest font-bold border border-zinc-800 px-1 bg-black">SYCO23 // LOW-RESOURCE</div>
+                <div class="text-[9px] font-bold text-[var(--accent)] border border-[var(--accent)] px-1 bg-black">FPS: 30 LCK</div>
+              </div>
+              <div class="flex flex-col items-center justify-center gap-1 z-10">
+                <span class="font-display text-5xl font-extrabold tracking-widest text-white drop-shadow-md">ONLINE</span>
+                <span class="text-[10px] text-zinc-500 uppercase tracking-widest">Visualizer Render Paused</span>
+              </div>
+              <div class="flex justify-between items-end z-10 text-[8px] tracking-widest">
+                <span>T-GMT: 19:24:19</span>
+                <span>DECK V4.2</span>
+              </div>
+            </div>
+
+            <!-- Overlays -->
+            <div class="absolute top-3 left-3 pointer-events-none flex flex-col gap-1 z-30">
+              <span class="text-[8px] bg-black/90 text-white px-1.5 py-0.5 border border-zinc-700 font-bold uppercase tracking-widest">
+                REC: {{ isLive ? sessionTimeString : '00:00:00' }}
+              </span>
+            </div>
+
+            <!-- Audio Trigger Plate -->
+            <div v-if="!isPlayingAudio" class="absolute inset-0 bg-black/85 flex flex-col items-center justify-center gap-3 p-4 z-40 backdrop-blur-sm">
+              <p class="text-[10px] text-[var(--accent)] uppercase tracking-[0.2em] font-bold drop-shadow-lg">Audio Subsystem Offline</p>
+              <button 
+                @click="startGlobalAudio"
+                class="btn-mech bg-[#0a090c] border border-zinc-600 text-white hover:text-[var(--accent)] hover:border-[var(--accent)] px-6 py-3 text-[11px] font-extrabold uppercase tracking-widest shadow-xl"
+              >
+                CONNECT GENERATORS
+              </button>
+            </div>
+          </div>
+
+          <!-- Monitor Sub-Controls (Glitch, Grid, VHS) -->
+          <div class="grid grid-cols-3 gap-1 mt-2">
+            <button @click="toggleGrid" class="btn-mech py-1 text-[8px] font-bold uppercase tracking-widest" :class="overlayGrid ? 'bg-[var(--accent-dim)] text-[var(--accent)] border-[var(--accent)]' : 'text-zinc-500'">Align Grid</button>
+            <button @click="toggleGlitch" class="btn-mech py-1 text-[8px] font-bold uppercase tracking-widest" :class="overlayGlitch ? 'bg-[var(--accent-dim)] text-[var(--accent)] border-[var(--accent)]' : 'text-zinc-500'">Signal Glitch</button>
+            <button @click="toggleVhs" class="btn-mech py-1 text-[8px] font-bold uppercase tracking-widest" :class="vhsFilter ? 'bg-[var(--accent-dim)] text-[var(--accent)] border-[var(--accent)]' : 'text-zinc-500'">VHS Noise</button>
+          </div>
+
+          <!-- Telemetry Under Monitor -->
+          <div class="flex items-center justify-between mt-3 pt-2 border-t border-[#1c1a20]">
+            <div class="flex gap-4">
+              <div class="flex flex-col">
+                <span class="text-[7px] text-zinc-600 uppercase font-bold tracking-widest">Outbound Bitrate</span>
+                <span class="text-xs font-display font-bold text-white">{{ isLive ? totalBitrate + ' kbps' : '0 kbps' }}</span>
+              </div>
+              <div class="flex flex-col">
+                <span class="text-[7px] text-zinc-600 uppercase font-bold tracking-widest">CPU Load</span>
+                <span class="text-xs font-display font-bold" :class="cpuOverhead > 70 ? 'text-red-500' : 'text-[var(--accent)]'">{{ cpuOverhead }}%</span>
+              </div>
+            </div>
+            <div class="flex flex-col text-right">
+              <span class="text-[7px] text-zinc-600 uppercase font-bold tracking-widest">Dropped Pkts</span>
+              <span class="text-xs font-display font-bold" :class="droppedPackets > 0 ? 'text-red-500' : 'text-emerald-500'">{{ droppedPackets }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODULE 5: TEMPLATE BUILDER -->
+        <div class="plate-base rounded-sm p-3 flex-1 flex flex-col overflow-hidden relative">
+          <div class="screw top-1.5 left-1.5"></div><div class="screw top-1.5 right-1.5"></div>
+          
+          <div class="flex items-center justify-between border-b border-[#232128] pb-2 mb-2 px-1">
+            <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-300">
+              <span class="w-1.5 h-1.5 bg-[var(--accent)] rounded-none"></span>
+              03. Visual Architecture
+            </div>
+            <!-- Sub Tabs -->
+            <div class="flex bg-black p-0.5 border border-[#27252c]">
+              <button @click="activeSubTab = 'gallery'" class="px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-widest" :class="activeSubTab === 'gallery' ? 'bg-[var(--accent)] text-black' : 'text-zinc-500'">Gallery</button>
+              <button @click="activeSubTab = 'builder'" class="px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-widest" :class="activeSubTab === 'builder' ? 'bg-[var(--accent)] text-black' : 'text-zinc-500'">Builder</button>
+            </div>
+          </div>
+
+          <div v-show="activeSubTab === 'gallery'" class="flex-1 overflow-y-auto pr-1">
+            <div class="grid grid-cols-5 gap-1.5">
+              <button 
+                v-for="template in visualTemplates" :key="template.id"
+                @click="activeTemplateId = template.id"
+                class="btn-mech p-1.5 text-left flex flex-col justify-between aspect-[3/4] rounded-none transition duration-150 relative overflow-hidden"
+                :class="activeTemplateId === template.id ? 'border-[var(--accent)] border-b-[var(--accent)] bg-[var(--accent-dim)]' : ''"
+              >
+                <!-- Wireframe representations -->
+                <div class="absolute inset-0 bg-[#0a090c] opacity-90 pointer-events-none flex items-center justify-center border border-white/5 m-1">
+                    <div v-if="template.id === 1" class="text-zinc-700 font-bold text-2xl">☣</div>
+                    <div v-if="template.id === 2" class="text-zinc-700 font-bold text-2xl">█</div>
+                    <div v-if="template.id === 3" class="text-zinc-700 font-bold text-2xl">⚙</div>
+                    <div v-if="template.id === 4" class="text-zinc-700 font-bold text-2xl">⛩</div>
+                    <div v-if="template.id === 5" class="text-zinc-700 font-bold text-2xl">⚡</div>
+                </div>
+                <div class="relative z-10 flex flex-col h-full justify-between">
+                  <span class="text-[7px] text-[var(--accent)] font-mono font-bold bg-black/80 w-max px-1">T-0{{ template.id }}</span>
+                  <span class="text-[8px] font-display font-extrabold tracking-wider text-white uppercase leading-tight bg-black/80 px-0.5">{{ template.name }}</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <div v-show="activeSubTab === 'builder'" class="flex-1 overflow-y-auto pr-1 space-y-3">
+            <div class="grid grid-cols-2 gap-2 bg-black/50 p-2 border border-zinc-900">
+              <div>
+                <span class="text-[7px] font-bold text-zinc-500 block mb-1 tracking-widest uppercase">Header Override:</span>
+                <input v-model="customTextHeader" type="text" class="w-full bg-[#070608] border border-[#27252c] p-1 text-[9px] font-bold text-white focus:border-[var(--accent)] outline-none" />
+              </div>
+              <div>
+                <span class="text-[7px] font-bold text-zinc-500 block mb-1 tracking-widest uppercase">Watermark Logo:</span>
+                <select v-model="activeWatermark" class="w-full bg-[#070608] border border-[#27252c] p-1 text-[9px] font-bold text-white focus:border-[var(--accent)] outline-none">
+                  <option value="SYCO23">SYCO23 CHIP</option>
+                  <option value="CRUCIFORM">MECHANICAL TOTEM</option>
+                  <option value="NONE">NO DECORATION</option>
+                </select>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <span class="text-[7px] font-bold text-zinc-500 block mb-1 tracking-widest uppercase">Backdrop Material:</span>
+                <select v-model="activeBackdrop" class="w-full bg-[#070608] border border-[#27252c] p-1 text-[9px] font-bold text-white focus:border-[var(--accent)] outline-none">
+                  <option value="dark-ash">DARK ASH WAREHOUSE</option>
+                  <option value="industrial-concrete">RAW OXIDIZED COAL</option>
+                  <option value="copper-slag">ANCIENT COPPER GLOW</option>
+                </select>
+              </div>
+              <div class="flex items-center gap-2 pt-3 pl-2">
+                <input type="checkbox" id="vector-strobe" v-model="backgroundStrobe" class="accent-[var(--accent)] w-3 h-3" />
+                <label for="vector-strobe" class="text-[8px] font-bold text-zinc-400 uppercase tracking-widest cursor-pointer mt-0.5">Audio Reactive Strobe</label>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- ========================================== -->
+      <!-- RIGHT COLUMN: MATRIX & LOGS (COL 9-12)     -->
+      <!-- ========================================== -->
+      <section class="lg:col-span-4 flex flex-col gap-3 h-full overflow-hidden pl-1">
+        
+        <!-- MODULE 6: MULTICAST ROUTING MATRIX -->
+        <div class="plate-base rounded-sm p-3 flex flex-col flex-1 overflow-hidden relative">
+          <div class="screw top-1.5 left-1.5"></div><div class="screw top-1.5 right-1.5"></div>
+          
+          <div class="flex items-center justify-between border-b border-[#232128] pb-2 mb-2 px-1">
+            <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-300">
+              <span class="w-1.5 h-1.5 bg-[var(--accent)] rounded-none"></span>
+              04. Relay Matrix
+            </div>
+            <div class="flex gap-1">
+              <button @click="batchAction('arm')" class="btn-mech px-2 py-0.5 text-[7px] font-extrabold uppercase tracking-widest text-zinc-400">Arm All</button>
+              <button @click="batchAction('fire')" class="btn-mech px-2 py-0.5 text-[7px] font-extrabold uppercase tracking-widest text-[var(--accent)] border-[var(--accent)]/30">Fire All</button>
+            </div>
+          </div>
+
+          <!-- Dense grid for nodes (2 columns) -->
+          <div class="grid grid-cols-2 gap-2 flex-1 overflow-y-auto pr-1 pb-1">
+            <div 
+              v-for="node in nodes" :key="node.id"
+              class="plate-raised p-2 rounded-sm flex flex-col justify-between border-t border-l"
+              :class="[
+                node.state === 'live' ? 'border-[var(--accent)] border-b-[var(--accent)] bg-[var(--accent-dim)]' : 'border-zinc-800',
+                node.state === 'failed' ? 'border-red-800 bg-red-950/20' : ''
+              ]"
+            >
+              <div class="flex justify-between items-start mb-1">
+                <span class="text-[9px] font-display font-bold tracking-widest text-white uppercase truncate pr-1">{{ node.name }}</span>
+                <span class="text-[6px] px-1 bg-black text-zinc-500 border border-zinc-800 font-mono flex-shrink-0">{{ node.protocol }}</span>
+              </div>
+
+              <!-- State Tag -->
+              <div class="flex items-center gap-1.5 bg-[#0a090c] p-1 border border-zinc-900 mb-1.5">
+                <span class="w-1.5 h-1.5 rounded-none flex-shrink-0" :class="stateColors[node.state]"></span>
+                <span class="text-[7px] font-extrabold uppercase tracking-widest" :class="node.state === 'live' ? 'text-white' : 'text-zinc-500'">{{ node.state }}</span>
+              </div>
+
+              <div class="flex justify-between text-[7px] text-zinc-400 mb-2 font-bold tracking-wider px-0.5">
+                <span>{{ node.state === 'live' ? node.bitrate + 'k' : '0k' }}</span>
+                <span class="font-mono text-zinc-600">{{ node.handshake }}</span>
+              </div>
+
+              <!-- Mini Controls -->
+              <div class="grid grid-cols-2 gap-1 mb-1">
+                <button @click="actionNode(node, 'armed')" class="btn-mech py-1 text-[7px] font-extrabold uppercase" :class="node.state === 'armed' ? 'bg-[var(--accent)] text-black border-[var(--accent)]' : 'text-zinc-400'">Arm</button>
+                <button @click="actionNode(node, 'live')" :disabled="node.state !== 'armed'" class="btn-mech py-1 text-[7px] font-extrabold uppercase disabled:opacity-30" :class="node.state === 'live' ? 'bg-emerald-600 text-white border-emerald-500' : 'text-zinc-400'">Fire</button>
+              </div>
+              <button @click="openSetupDrawer(node)" class="w-full py-0.5 bg-black border border-zinc-800 hover:border-zinc-600 text-[6px] text-zinc-500 uppercase font-bold tracking-widest mt-1">Config Kit</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODULE 7: SYSTEM LOGS -->
+        <div class="plate-base rounded-sm p-3 flex flex-col h-48 relative">
+          <div class="screw top-1.5 left-1.5"></div><div class="screw top-1.5 right-1.5"></div>
+          
+          <div class="flex items-center justify-between border-b border-[#232128] pb-2 mb-2 px-1">
+            <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-300">
+              <span class="w-1.5 h-1.5 bg-[var(--accent)] rounded-none"></span>
+              05. Telemetry Log
+            </div>
+            <button @click="injectSimulationFault" class="btn-mech px-2 py-0.5 bg-red-950/30 border-red-900/50 text-red-500 font-bold text-[7px] uppercase tracking-widest">
+              ⚠ Inject Fault
+            </button>
+          </div>
+
+          <!-- Log Box -->
+          <div ref="logContainer" class="plate-sunken p-2 flex-1 overflow-y-auto text-[8px] font-mono space-y-1">
+            <div v-for="(log, idx) in logs" :key="idx" class="flex gap-1.5 items-start">
+              <span class="text-zinc-600 select-none">[{{ log.timestamp }}]</span>
+              <span class="font-extrabold uppercase px-1 rounded-none select-none text-[7px] leading-tight mt-[1px]" :class="logClass[log.type]">{{ log.type }}</span>
+              <span class="leading-tight" :class="logTextClass[log.type]">{{ log.message }}</span>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- RIGHT HAND CONFIGURATION DRAWER -->
+    <transition name="drawer-slide">
+      <div v-if="drawerNode" class="fixed inset-y-0 right-0 w-full sm:w-[420px] bg-[#0c0b0e] border-l-4 border-[var(--accent)] shadow-2xl p-6 z-50 flex flex-col justify-between overflow-y-auto">
+        
+        <div class="space-y-6">
+          <div class="flex items-center justify-between border-b border-zinc-800 pb-4">
+            <div>
+              <span class="text-[8px] text-[var(--accent)] font-bold uppercase tracking-[0.2em] block mb-1">Asset Assembly</span>
+              <h3 class="text-2xl font-display font-extrabold text-white uppercase tracking-wider">{{ drawerNode.name }}</h3>
+            </div>
+            <button @click="closeSetupDrawer" class="btn-mech px-2 py-1 text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Close</button>
+          </div>
+
+          <div class="space-y-4">
+            <h4 class="text-[9px] font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-1">Core Terminals</h4>
+            <div class="space-y-3">
+              <div>
+                <label class="text-[8px] font-bold text-zinc-500 block mb-1 uppercase tracking-widest">RTMP Server:</label>
+                <div class="flex bg-black border border-zinc-800">
+                  <input readonly :value="drawerNode.serverUrl" type="text" class="bg-transparent text-[10px] p-2 text-zinc-300 focus:outline-none flex-1 font-mono" />
+                  <button @click="copyText(drawerNode.serverUrl, 'Server URL')" class="bg-zinc-900 hover:bg-zinc-800 px-3 text-[8px] font-bold border-l border-zinc-800 uppercase tracking-widest">Copy</button>
+                </div>
+              </div>
+              <div>
+                <label class="text-[8px] font-bold text-zinc-500 block mb-1 uppercase tracking-widest">Secure Key:</label>
+                <div class="flex bg-black border border-zinc-800">
+                  <input readonly :value="drawerNode.streamKey" type="password" class="bg-transparent text-[10px] p-2 text-zinc-300 focus:outline-none flex-1 font-mono" />
+                  <button @click="copyText(drawerNode.streamKey, 'Stream Key')" class="bg-zinc-900 hover:bg-zinc-800 px-3 text-[8px] font-bold border-l border-zinc-800 uppercase tracking-widest">Copy</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <h4 class="text-[9px] font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-1">FFmpeg Pipeline</h4>
+            <div class="bg-[#050506] p-3 border border-zinc-800 text-[9px] font-mono text-emerald-500 break-all select-all leading-relaxed whitespace-pre-wrap">
+              {{ generateFfmpegCommand(drawerNode) }}
+            </div>
+          </div>
+
+          <div class="space-y-3">
+            <h4 class="text-[9px] font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-1">Meta Ingest Text</h4>
+            <div class="space-y-2 text-xs bg-[#050506] p-3 border border-zinc-900">
+              <div class="flex justify-between text-[9px] text-zinc-500 uppercase tracking-widest font-bold">
+                <span>Title:</span>
+                <span class="text-[var(--accent)]">SYCO23 TRANS v4</span>
+              </div>
+              <p class="text-zinc-300 font-semibold text-[10px]">"UNDERGROUND TRANSMISSION. NO SURFACE. DIRECT MULTI-RELAY PIPELINES."</p>
+              <button @click="copyText('UNDERGROUND TRANSMISSION. NO SURFACE.', 'Promo Title')" class="btn-mech mt-2 w-full py-1.5 text-[8px] font-bold uppercase tracking-widest text-zinc-400">Copy String</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="border-t border-zinc-800 pt-4 mt-6">
+          <button @click="closeSetupDrawer" class="btn-mech w-full py-3 bg-[var(--accent)] border-[var(--accent)] text-black font-extrabold text-[10px] uppercase tracking-widest shadow-[0_0_15px_var(--accent-dim)]">
+            Acknowledge Kit
+          </button>
+        </div>
+      </div>
+    </transition>
+
+    <!-- FOOTER -->
+    <footer class="bg-[#0b0a0d] border-t-2 border-[#1c1a20] px-4 py-1.5 flex justify-between items-center text-[8px] text-zinc-600 font-bold uppercase tracking-widest flex-shrink-0 z-10 relative">
+      <div class="absolute top-0 left-0 w-full h-[1px] bg-black"></div>
+      <span>SYSTEM CORRUPT // HARDWARE ROUTING DECK // BUILD V4.2</span>
+      <span class="text-[var(--accent)] flex items-center gap-2">
+        <span class="w-1 h-1 rounded-none bg-[var(--accent)]"></span> CONTINUOUS PRESSURE
+      </span>
+    </footer>
+
+    <!-- CLIPBOARD TOAST -->
+    <div v-if="toastMessage" class="fixed bottom-12 left-1/2 transform -translate-x-1/2 px-6 py-2 bg-[#121115] border-2 border-[var(--accent)] text-white font-mono text-[9px] tracking-widest uppercase z-50 shadow-2xl animate-bounce">
+      Copied [{{ toastMessage }}] to clipboard buffer
+    </div>
+
+  </div>
+
+  <!-- Vue 3 App Logic -->
+  <script>
+    const { createApp, ref, computed, reactive, watch, onMounted, onBeforeUnmount } = Vue;
+
+    createApp({
+      setup() {
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'syco23-broadcast-deck';
+
+        const accentOptions = [
+          { name: 'Deep Crimson', hex: '#991b1b', dimHex: 'rgba(153, 27, 27, 0.15)' },
+          { name: 'Rust Orange', hex: '#ea580c', dimHex: 'rgba(234, 88, 12, 0.15)' },
+          { name: 'Dull Amber', hex: '#d97706', dimHex: 'rgba(217, 119, 6, 0.15)' },
+          { name: 'Oxidized Copper', hex: '#0f766e', dimHex: 'rgba(15, 118, 110, 0.15)' },
+          { name: 'Dirty Turquoise', hex: '#0891b2', dimHex: 'rgba(8, 145, 178, 0.15)' },
+          { name: 'Burnt Ochre', hex: '#b45309', dimHex: 'rgba(180, 83, 9, 0.15)' }
+        ];
+
+        // Defaulted to Deep Crimson per redesign
+        const activeAccent = ref(accentOptions[0]); 
+
+        const cssProps = computed(() => ({
+          '--accent': activeAccent.value.hex,
+          '--accent-hover': activeAccent.value.hex + 'cc',
+          '--accent-dim': activeAccent.value.dimHex,
+        }));
+
+        const changeAccent = (color) => {
+          activeAccent.value = color;
+          addLog(`Accent shifted to ${color.name} on master console.`, 'info');
+        };
+
+        const isPlayingAudio = ref(false);
+        const gainValue = ref(1.2);
+        const lowPassFreq = ref(20000); 
+        const isMuted = ref(false);
+        const activeSource = ref('synth-ritual');
+        const customUrl = ref('https://streams.nightride.fm/chillsynth.mp3');
+        const uploadedFileName = ref('');
+
+        const audioContext = ref(null);
+        const analyser = ref(null);
+        const gainNode = ref(null);
+        const filterNode = ref(null);
+        const mediaSourceNode = ref(null);
+        const synthInterval = ref(null);
+        const localFileBuffer = ref(null);
+
+        const nodes = ref([
+          { id: 1, name: 'YouTube Live', protocol: 'RTMP', state: 'idle', bitrate: 4500, handshake: 'STBY', serverUrl: 'rtmp://a.rtmp.youtube.com/live2', streamKey: 'live_yt_839210_syco4' },
+          { id: 2, name: 'Telegram', protocol: 'RTMPS', state: 'idle', bitrate: 2500, handshake: 'STBY', serverUrl: 'rtmps://telegram.live-gateway.org', streamKey: 'tg_secure_881903_key' },
+          { id: 3, name: 'TikTok', protocol: 'RTMP', state: 'idle', bitrate: 3200, handshake: 'STBY', serverUrl: 'rtmp://live-api.tiktok.com/ingest', streamKey: 'tiktok_live_cell_091' },
+          { id: 4, name: 'Twitch TV', protocol: 'RTMP', state: 'idle', bitrate: 6000, handshake: 'STBY', serverUrl: 'rtmp://live.twitch.tv/app', streamKey: 'live_tw_primary_freetekno' },
+          { id: 5, name: 'Instagram', protocol: 'RTMPS', state: 'idle', bitrate: 2800, handshake: 'STBY', serverUrl: 'rtmps://live-ingest.instagram.com', streamKey: 'ig_stream_991802_x' },
+          { id: 6, name: 'Mixer Node', protocol: 'RTMP', state: 'idle', bitrate: 3500, handshake: 'STBY', serverUrl: 'rtmp://mixer.live-gateway.com', streamKey: 'mixer_core_83912' },
+          { id: 7, name: 'Mixcloud', protocol: 'RTMP', state: 'idle', bitrate: 320, handshake: 'STBY', serverUrl: 'rtmp://live.mixcloud.com/relay', streamKey: 'mixc_audio_high_pass' },
+          { id: 8, name: 'Facebook', protocol: 'RTMPS', state: 'idle', bitrate: 4000, handshake: 'STBY', serverUrl: 'rtmps://live-api-s.facebook.com:443/rtmp', streamKey: 'fb_live_v4_9821' }
+        ]);
+
+        const stateColors = {
+          idle: 'bg-zinc-700',
+          armed: 'bg-[var(--accent)]',
+          connecting: 'bg-yellow-500',
+          live: 'bg-emerald-500 animate-pulse',
+          degraded: 'bg-amber-600',
+          failed: 'bg-red-600',
+          cooldown: 'bg-blue-600',
+          offline: 'bg-zinc-900'
+        };
+
+        const isArmed = ref(false);
+        const isLive = ref(false);
+        const isTvMode = ref(false);
+        const streamTime = ref(0);
+        const droppedPackets = ref(0);
+        const cpuOverhead = ref(12);
+
+        const activeSubTab = ref('gallery'); 
+        const activeTemplateId = ref(1);
+        const customTextHeader = ref('SYSTEM CORRUPT // ACTIVE TRANSMISSION');
+        const activeWatermark = ref('SYCO23');
+        const activeBackdrop = ref('dark-ash');
+        const backgroundStrobe = ref(true);
+
+        const visualTemplates = [
+          { id: 1, name: 'Ritual Totem', desc: 'Symmetrical speaker totem' },
+          { id: 2, name: 'Wall of Bass', desc: 'Massive stacked subs' },
+          { id: 3, name: 'Corruption', desc: 'Mayan industrial disk' },
+          { id: 4, name: 'Concrete', desc: 'Solid concrete pillar' },
+          { id: 5, name: 'Signal Grid', desc: 'Modular radar display' }
+        ];
+
+        const activeTemplateName = computed(() => {
+          const t = visualTemplates.find(x => x.id === activeTemplateId.value);
+          return t ? `${t.name}` : 'Unassigned';
+        });
+
+        const overlayGrid = ref(false);
+        const overlayGlitch = ref(true);
+        const vhsFilter = ref(false);
+
+        const logs = ref([
+          { timestamp: '19:24:00', type: 'info', message: 'SYCO23 System v4.2 nominal.' },
+          { timestamp: '19:24:01', type: 'system', message: 'Fiber pathways mounted.' },
+          { timestamp: '19:24:02', type: 'warn', message: 'Relays locked. Arm system.' }
+        ]);
+
+        const logContainer = ref(null);
+        const visualizerCanvas = ref(null);
+
+        const logClass = {
+          info: 'bg-zinc-800 text-zinc-300 border border-zinc-700',
+          system: 'bg-sky-950 text-sky-400 border border-sky-900',
+          warn: 'bg-amber-950 text-amber-500 border border-amber-900',
+          err: 'bg-red-950 text-red-500 border border-red-900',
+          live: 'bg-emerald-950 text-emerald-400 border border-emerald-900'
+        };
+
+        const logTextClass = {
+          info: 'text-zinc-500',
+          system: 'text-sky-500',
+          warn: 'text-amber-500',
+          err: 'text-red-500 font-bold',
+          live: 'text-emerald-500'
+        };
+
+        const addLog = (message, type = 'info') => {
+          const now = new Date();
+          const pad = (n) => String(n).padStart(2, '0');
+          const timestamp = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+          logs.value.push({ timestamp, type, message });
+          if (logs.value.length > 80) logs.value.shift();
+          Vue.nextTick(() => {
+            if (logContainer.value) logContainer.value.scrollTop = logContainer.value.scrollHeight;
+          });
+        };
+
+        const initAudioEngine = async () => {
+          if (!audioContext.value) {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            const ctx = new AudioContextClass();
+            audioContext.value = ctx;
+            const analyzeNode = ctx.createAnalyser();
+            analyzeNode.fftSize = 256;
+            analyser.value = analyzeNode;
+            const gNode = ctx.createGain();
+            gNode.gain.setValueAtTime(gainValue.value, ctx.currentTime);
+            gainNode.value = gNode;
+            const fNode = ctx.createBiquadFilter();
+            fNode.type = 'lowpass';
+            fNode.frequency.setValueAtTime(lowPassFreq.value, ctx.currentTime);
+            filterNode.value = fNode;
+            analyzeNode.connect(fNode);
+            fNode.connect(gNode);
+            gNode.connect(ctx.destination);
+            addLog('Web Audio DSP pipeline assembled.', 'system');
+          }
+          if (audioContext.value.state === 'suspended') await audioContext.value.resume();
+        };
+
+        const startGlobalAudio = async () => {
+          try {
+            await initAudioEngine();
+            isPlayingAudio.value = true;
+            addLog('Generators active. Sub-bass running.', 'info');
+            if (activeSource.value.startsWith('synth')) playProceduralSynth();
+            else if (activeSource.value === 'url') playIcecastUrl(customUrl.value);
+            else if (activeSource.value === 'upload' && localFileBuffer.value) playLocalTranscodeBuffer(localFileBuffer.value);
+          } catch (e) {
+            addLog(`Audio interface start aborted: ${e.message}`, 'err');
+          }
+        };
+
+        const stopGlobalAudio = () => {
+          isPlayingAudio.value = false;
+          stopSynthLoops();
+          if (mediaSourceNode.value) {
+            try { mediaSourceNode.value.stop(); } catch (err) {}
+            mediaSourceNode.value.disconnect();
+            mediaSourceNode.value = null;
+          }
+          addLog('Generators deactivated.', 'warn');
+        };
+
+        const toggleMute = () => {
+          isMuted.value = !isMuted.value;
+          if (gainNode.value && audioContext.value) {
+            gainNode.value.gain.setValueAtTime(isMuted.value ? 0 : gainValue.value, audioContext.value.currentTime);
+            addLog(`Master monitor ${isMuted.value ? 'MUTED' : 'UNMUTED'}.`, 'system');
+          }
+        };
+
+        const handleGainChange = () => {
+          if (gainNode.value && audioContext.value) {
+            gainNode.value.gain.setValueAtTime(isMuted.value ? 0 : gainValue.value, audioContext.value.currentTime);
+          }
+        };
+
+        const handleLowPassChange = () => {
+          if (filterNode.value && audioContext.value) {
+            filterNode.value.frequency.setValueAtTime(lowPassFreq.value, audioContext.value.currentTime);
+            addLog(`Low-pass corner set to ${lowPassFreq.value} Hz.`, 'system');
+          }
+        };
+
+        const stopSynthLoops = () => {
+          if (synthInterval.value) {
+            clearInterval(synthInterval.value);
+            synthInterval.value = null;
+          }
+        };
+
+        const playProceduralSynth = () => {
+          if (!audioContext.value) return;
+          stopSynthLoops();
+          let step = 0;
+          const tempo = 138; 
+          const stepTime = 60 / tempo / 4; 
+          let nextNoteTime = audioContext.value.currentTime;
+
+          addLog(`Profile Loaded: ${activeSource.value.toUpperCase()}`, 'system');
+
+          const triggerStep = () => {
+            const ctx = audioContext.value;
+            if (!ctx || !isPlayingAudio.value) return;
+            const time = ctx.currentTime;
+
+            if (step % 4 === 0) {
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.frequency.setValueAtTime(140, time);
+              osc.frequency.exponentialRampToValueAtTime(32, time + 0.16);
+              gain.gain.setValueAtTime(1.0, time);
+              gain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+              osc.connect(gain);
+              gain.connect(analyser.value);
+              osc.start(time);
+              osc.stop(time + 0.35);
+            }
+
+            if (step % 32 === 0) {
+              const droneOsc = ctx.createOscillator();
+              const droneGain = ctx.createGain();
+              droneOsc.type = 'sawtooth';
+              droneOsc.frequency.setValueAtTime(41.20, time);
+              const lp = ctx.createBiquadFilter();
+              lp.type = 'lowpass';
+              lp.frequency.setValueAtTime(110, time);
+              droneGain.gain.setValueAtTime(0, time);
+              droneGain.gain.linearRampToValueAtTime(0.5, time + 0.4);
+              droneGain.gain.exponentialRampToValueAtTime(0.01, time + 4.5);
+              droneOsc.connect(lp);
+              lp.connect(droneGain);
+              droneGain.connect(analyser.value);
+              droneOsc.start(time);
+              droneOsc.stop(time + 4.6);
+            }
+
+            if (activeSource.value === 'synth-warehouse' && (step % 4 === 2 || step % 8 === 5)) {
+              const bufferSize = ctx.sampleRate * 0.08;
+              const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+              const data = noiseBuffer.getChannelData(0);
+              for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+              const noiseSource = ctx.createBufferSource();
+              noiseSource.buffer = noiseBuffer;
+              const bpFilter = ctx.createBiquadFilter();
+              bpFilter.type = 'bandpass';
+              bpFilter.frequency.setValueAtTime(9000, time);
+              const noiseGain = ctx.createGain();
+              noiseGain.gain.setValueAtTime(0.15, time);
+              noiseGain.gain.exponentialRampToValueAtTime(0.01, time + 0.06);
+              noiseSource.connect(bpFilter);
+              bpFilter.connect(noiseGain);
+              noiseGain.connect(analyser.value);
+              noiseSource.start(time);
+              noiseSource.stop(time + 0.1);
+            }
+
+            if (activeSource.value === 'synth-warehouse' && (step % 16 === 3 || step % 16 === 10 || step % 16 === 14)) {
+              const osc = ctx.createOscillator();
+              const filter = ctx.createBiquadFilter();
+              const gain = ctx.createGain();
+              const scale = [55, 65.4, 73.4, 82.4, 98, 110]; 
+              const note = scale[Math.floor(Math.random() * scale.length)];
+              osc.type = 'sawtooth';
+              osc.frequency.setValueAtTime(note, time);
+              filter.type = 'lowpass';
+              filter.frequency.setValueAtTime(200, time);
+              filter.frequency.exponentialRampToValueAtTime(1500, time + 0.12);
+              filter.Q.setValueAtTime(14, time);
+              gain.gain.setValueAtTime(0.25, time);
+              gain.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+              osc.connect(filter);
+              filter.connect(gain);
+              gain.connect(analyser.value);
+              osc.start(time);
+              osc.stop(time + 0.22);
+            }
+            step = (step + 1) % 32;
+          };
+
+          const scheduleLoop = () => {
+            while (nextNoteTime < audioContext.value.currentTime + 0.1) {
+              triggerStep();
+              nextNoteTime += stepTime;
+            }
+          };
+          synthInterval.value = setInterval(scheduleLoop, 25);
+        };
+
+        const playIcecastUrl = (url) => {
+          if (!audioContext.value || !analyser.value) return;
+          stopSynthLoops();
+          if (mediaSourceNode.value) {
+            try { mediaSourceNode.value.stop(); } catch (e) {}
+            mediaSourceNode.value.disconnect();
+          }
+          addLog(`Resolving stream pathway: ${url}`, 'system');
+          const audioEl = new Audio();
+          audioEl.crossOrigin = "anonymous";
+          audioEl.src = url;
+          audioEl.autoplay = true;
+          audioEl.addEventListener('error', (e) => {
+            addLog('Feed restricted. Emulating.', 'warn');
+            playProceduralSynth(); 
+          });
+          const source = audioContext.value.createMediaElementSource(audioEl);
+          source.connect(analyser.value);
+          mediaSourceNode.value = audioEl;
+        };
+
+        const playLocalTranscodeBuffer = (buffer) => {
+          if (!audioContext.value || !analyser.value) return;
+          stopSynthLoops();
+          if (mediaSourceNode.value) {
+            try { mediaSourceNode.value.stop(); } catch (e) {}
+            mediaSourceNode.value.disconnect();
+          }
+          const source = audioContext.value.createBufferSource();
+          source.buffer = buffer;
+          source.loop = true;
+          source.connect(analyser.value);
+          source.start(0);
+          mediaSourceNode.value = source;
+          addLog('Local transcode stream mapped.', 'live');
+        };
+
+        const handleFileUpload = (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          uploadedFileName.value = file.name;
+          addLog(`Loading transit memory: ${file.name}`, 'info');
+          const reader = new FileReader();
+          reader.onload = async (event) => {
+            try {
+              await initAudioEngine();
+              audioContext.value.decodeAudioData(event.target.result, (decodedBuffer) => {
+                localFileBuffer.value = decodedBuffer;
+                addLog('Transcode successful. Armed.', 'info');
+                activeSource.value = 'upload';
+                if (isPlayingAudio.value) playLocalTranscodeBuffer(decodedBuffer);
+              }, (err) => {
+                addLog('Transcoder rejected the file.', 'err');
+              });
+            } catch (err) {
+              addLog(`Transcoding pipeline abort: ${err.message}`, 'err');
+            }
+          };
+          reader.readAsArrayBuffer(file);
+        };
+
+        const handleSourceChange = () => {
+          if (!isPlayingAudio.value) {
+            addLog(`Source changed to ${activeSource.value.toUpperCase()}.`, 'info');
+            return;
+          }
+          if (activeSource.value.startsWith('synth')) {
+            if (mediaSourceNode.value) {
+              if (mediaSourceNode.value.pause) mediaSourceNode.value.pause();
+              else mediaSourceNode.value.stop();
+            }
+            playProceduralSynth();
+          } else if (activeSource.value === 'url') {
+            playIcecastUrl(customUrl.value);
+          } else if (activeSource.value === 'upload') {
+            if (localFileBuffer.value) playLocalTranscodeBuffer(localFileBuffer.value);
+            else {
+              addLog('No local block. Reverting to loops.', 'warn');
+              activeSource.value = 'synth-ritual';
+              playProceduralSynth();
+            }
+          }
+        };
+
+        const totalBitrate = computed(() => {
+          let total = 0;
+          nodes.value.forEach(node => { if (node.state === 'live') total += node.bitrate; });
+          return total;
+        });
+
+        const liveNodesCount = computed(() => nodes.value.filter(n => n.state === 'live').length);
+
+        const sessionTimeString = computed(() => {
+          const h = Math.floor(streamTime.value / 3600).toString().padStart(2, '0');
+          const m = Math.floor((streamTime.value % 3600) / 60).toString().padStart(2, '0');
+          const s = (streamTime.value % 60).toString().padStart(2, '0');
+          return `${h}:${m}:${s}`;
+        });
+
+        const currentFormat = computed(() => liveNodesCount.value === 0 ? 'STANDBY' : `${liveNodesCount.value}x OUTBOUND`);
+
+        let statsInterval = null;
+        onMounted(() => {
+          statsInterval = setInterval(() => {
+            if (isLive.value) {
+              streamTime.value += 1;
+              if (Math.random() > 0.8) cpuOverhead.value = Math.max(10, Math.min(85, Math.round(15 + Math.random() * 20 + liveNodesCount.value * 5)));
+              if (liveNodesCount.value > 5 && Math.random() > 0.94) {
+                droppedPackets.value += Math.floor(Math.random() * 4);
+                addLog('[watchdog] Fiber ingest jitter detected.', 'warn');
+              }
+            } else {
+              streamTime.value = 0;
+            }
+          }, 1000);
+        });
+
+        onBeforeUnmount(() => {
+          clearInterval(statsInterval);
+          stopGlobalAudio();
+        });
+
+        const injectSimulationFault = () => {
+          const liveNodes = nodes.value.filter(n => n.state === 'live');
+          if (liveNodes.length === 0) {
+            addLog('[watchdog] Fault aborted: No pipelines active.', 'warn');
+            return;
+          }
+          const victim = liveNodes[Math.floor(Math.random() * liveNodes.length)];
+          victim.state = 'failed';
+          droppedPackets.value += 45;
+          addLog(`[watchdog] CRITICAL: Pipeline terminated on ${victim.name.toUpperCase()}`, 'err');
+          
+          setTimeout(() => {
+            if (victim.state === 'failed') {
+              victim.state = 'connecting';
+              addLog(`[watchdog] Auto-recovery: Re-arming ${victim.name}...`, 'system');
+              setTimeout(() => {
+                if (isLive.value && victim.state === 'connecting') {
+                  victim.state = 'live';
+                  addLog(`[watchdog] Re-established ${victim.name}.`, 'live');
+                }
+              }, 3000);
+            }
+          }, 4000);
+        };
+
+        const actionNode = (node, targetState) => {
+          if (targetState === 'armed' && !isArmed.value) {
+            addLog(`Relay rejected: Master switch locked.`, 'warn');
+            return;
+          }
+          node.state = targetState;
+          const now = new Date();
+          const timestamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+          
+          if (targetState === 'armed') {
+            node.handshake = 'RDY';
+            addLog(`Segment armed: ${node.name.toUpperCase()}.`, 'system');
+          } else if (targetState === 'live') {
+            node.handshake = timestamp;
+            addLog(`Firing ${node.name.toUpperCase()} @ ${node.bitrate} kbps.`, 'live');
+          } else if (targetState === 'idle') {
+            node.handshake = 'STBY';
+            addLog(`Disconnected ${node.name.toUpperCase()}.`, 'warn');
+          }
+        };
+
+        const batchAction = (action) => {
+          if (action === 'arm') {
+            if (!isArmed.value) isArmed.value = true;
+            nodes.value.forEach(node => {
+              if (node.state === 'idle') { node.state = 'armed'; node.handshake = 'RDY'; }
+            });
+            addLog('All segments armed.', 'system');
+          } else if (action === 'fire') {
+            if (!isArmed.value) { addLog('Rejected: Master lock active.', 'warn'); return; }
+            isLive.value = true;
+            nodes.value.forEach(node => {
+              if (node.state === 'armed') {
+                node.state = 'live';
+                const now = new Date();
+                node.handshake = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+              }
+            });
+            addLog('Multiplex deployed. Feeds delivering.', 'live');
+          }
+        };
+
+        const toggleArm = () => {
+          isArmed.value = !isArmed.value;
+          if (isArmed.value) {
+            addLog('MASTER ARMED. Relays unlocked.', 'warn');
+          } else {
+            isLive.value = false;
+            nodes.value.forEach(node => { node.state = 'idle'; node.handshake = 'STBY'; });
+            addLog('Safety engaged. Channels offline.', 'info');
+          }
+        };
+
+        const toggleLaunchIngest = () => {
+          if (!isArmed.value) return;
+          isLive.value = !isLive.value;
+          if (isLive.value) {
+            addLog('HANDSHAKE ACTIVE: Transmitting to arrays.', 'system');
+            nodes.value.forEach(node => {
+              if (node.state === 'armed') {
+                node.state = 'live';
+                const now = new Date();
+                node.handshake = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+              }
+            });
+          } else {
+            nodes.value.forEach(node => {
+              if (node.state === 'live') { node.state = 'armed'; node.handshake = 'RDY'; }
+            });
+            addLog('Feeds terminated. Standby.', 'warn');
+          }
+        };
+
+        const toggleTvMode = () => {
+          isTvMode.value = !isTvMode.value;
+          addLog(`Visualizers ${isTvMode.value ? 'PAUSED' : 'RESUMED'}.`, 'system');
+        };
+
+        const drawerNode = ref(null);
+        const toastMessage = ref('');
+
+        const openSetupDrawer = (node) => { drawerNode.value = node; };
+        const closeSetupDrawer = () => { drawerNode.value = null; };
+
+        const generateFfmpegCommand = (node) => {
+          return `ffmpeg -re -i program_feed.ts -c:v h264_nvenc -preset ll -b:v ${node.bitrate}k -c:a aac -b:a 192k -f flv "${node.serverUrl}/${node.streamKey}"`;
+        };
+
+        const copyText = (text, typeLabel) => {
+          const tempInput = document.createElement("input");
+          tempInput.value = text;
+          document.body.appendChild(tempInput);
+          tempInput.select();
+          document.execCommand("copy");
+          document.body.removeChild(tempInput);
+          toastMessage.value = typeLabel;
+          addLog(`Copied: ${typeLabel}`, 'info');
+          setTimeout(() => { toastMessage.value = ''; }, 3000);
+        };
+
+        const toggleGrid = () => { overlayGrid.value = !overlayGrid.value; };
+        const toggleGlitch = () => { overlayGlitch.value = !overlayGlitch.value; };
+        const toggleVhs = () => { vhsFilter.value = !vhsFilter.value; };
+
+        onMounted(() => {
+          const canvas = visualizerCanvas.value;
+          if (!canvas) return;
+          const ctx = canvas.getContext('2d');
+          canvas.width = 1280;
+          canvas.height = 720;
+          let animationFrameId;
+
+          const renderLoop = () => {
+            if (isTvMode.value) {
+              animationFrameId = requestAnimationFrame(renderLoop);
+              return;
+            }
+
+            const dataArray = new Uint8Array(128);
+            if (analyser.value && isPlayingAudio.value) analyser.value.getByteFrequencyData(dataArray);
+            else {
+              const time = Date.now() * 0.003;
+              for (let i = 0; i < 128; i++) dataArray[i] = Math.max(0, 35 + Math.sin(time + i * 0.06) * 30 + Math.cos(time * 0.4 - i * 0.1) * 12);
+            }
+
+            let bass = 0, mids = 0;
+            for (let i = 0; i < 15; i++) bass += dataArray[i];
+            for (let i = 15; i < 70; i++) mids += dataArray[i];
+            bass = (bass / 15) / 255;
+            mids = (mids / 55) / 255;
+
+            const globalTime = Date.now();
+            const pulse = bass * 1.35; 
+            const hexAccent = activeAccent.value.hex;
+            // Parse hex to rgb for dynamic drawing
+            let r=255, g=0, b=0;
+            if(hexAccent.length === 7) {
+                r = parseInt(hexAccent.substring(1,3), 16);
+                g = parseInt(hexAccent.substring(3,5), 16);
+                b = parseInt(hexAccent.substring(5,7), 16);
+            }
+
+            ctx.fillStyle = '#08070a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (backgroundStrobe.value && pulse > 0.4) {
+              ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.04 * pulse})`;
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            ctx.strokeStyle = '#111013';
+            ctx.lineWidth = 8;
+            ctx.beginPath();
+            ctx.moveTo(150, 0); ctx.lineTo(150, canvas.height);
+            ctx.moveTo(canvas.width - 150, 0); ctx.lineTo(canvas.width - 150, canvas.height);
+            ctx.stroke();
+
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+
+            if (activeTemplateId.value === 1) {
+              const gradient = ctx.createRadialGradient(cx, cy, 10, cx, cy, 380 + pulse * 140);
+              gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${0.12 + pulse * 0.08})`);
+              gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+              ctx.fillStyle = gradient;
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+              const drawSpeakerStack = (sideX) => {
+                ctx.save(); ctx.translate(sideX, cy);
+                const flip = sideX < cx ? 1 : -1;
+                ctx.fillStyle = '#141317'; ctx.strokeStyle = '#232128'; ctx.lineWidth = 4;
+                ctx.fillRect(flip * -180, -260, 140, 520); ctx.strokeRect(flip * -180, -260, 140, 520);
+                ctx.fillStyle = '#070608'; ctx.beginPath();
+                ctx.arc(flip * -110, 160, 45 + pulse * 8, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${0.4 + pulse})`; ctx.lineWidth = 2 + pulse * 4; ctx.stroke();
+                ctx.translate(flip * -110, -20);
+                ctx.fillStyle = '#2d2522'; ctx.strokeStyle = '#120f0d'; ctx.lineWidth = 2;
+                ctx.fillRect(-20, -35, 40, 70); ctx.strokeRect(-20, -35, 40, 70);
+                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.3 + pulse * 0.7})`;
+                ctx.fillRect(-12, -15, 8, 4); ctx.fillRect(4, -15, 8, 4);
+                ctx.restore();
+              };
+
+              drawSpeakerStack(cx - 240); drawSpeakerStack(cx + 240);
+
+              ctx.fillStyle = '#1e1b19'; ctx.strokeStyle = '#111012'; ctx.lineWidth = 10;
+              ctx.beginPath(); ctx.rect(cx - 120, cy - 260, 240, 520); ctx.fill(); ctx.stroke();
+
+              ctx.fillStyle = '#443c39';
+              for (let y = cy - 240; y <= cy + 240; y += 60) {
+                ctx.beginPath(); ctx.arc(cx - 105, y, 5, 0, Math.PI * 2); ctx.arc(cx + 105, y, 5, 0, Math.PI * 2); ctx.fill();
+              }
+
+              ctx.save(); ctx.translate(cx, cy - 50);
+              ctx.fillStyle = '#2a221f'; ctx.strokeStyle = '#0a0807'; ctx.lineWidth = 4;
+              ctx.beginPath(); ctx.arc(0, -10, 50, Math.PI, 0, false); ctx.lineTo(45, 80); ctx.lineTo(25, 110); ctx.lineTo(-25, 110); ctx.lineTo(-45, 80); ctx.closePath();
+              ctx.fill(); ctx.stroke();
+
+              const eyeBrisk = 0.35 + pulse * 0.65;
+              ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${eyeBrisk})`;
+              ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 0.7)`; ctx.shadowBlur = 12 * eyeBrisk;
+              ctx.fillRect(-28, 10, 16, 6); ctx.fillRect(12, 10, 16, 6);
+              ctx.shadowBlur = 0; 
+              ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.4)`; ctx.lineWidth = 2.5;
+              ctx.beginPath(); ctx.moveTo(0, 10); ctx.lineTo(0, 70); ctx.moveTo(-15, 85); ctx.lineTo(15, 85); ctx.stroke();
+              ctx.restore();
+
+              ctx.fillStyle = '#ffffff'; ctx.font = 'bold 22px "Oswald", sans-serif'; ctx.textAlign = 'center'; ctx.letterSpacing = '3px';
+              ctx.fillText('SYSTEM CORRUPT', cx, cy + 180);
+              ctx.fillStyle = hexAccent; ctx.font = 'bold 36px "Oswald", sans-serif'; ctx.fillText('SYCO23', cx, cy + 225);
+
+            } else if (activeTemplateId.value === 2) {
+              const rows = 3, cols = 5, boxW = canvas.width / cols, boxH = canvas.height / rows;
+              for (let x = 0; x < cols; x++) {
+                for (let y = 0; y < rows; y++) {
+                  const bx = x * boxW, by = y * boxH, specificFreq = dataArray[(x * 8 + y * 12) % 128] / 255;
+                  ctx.fillStyle = '#111013'; ctx.strokeStyle = '#211f26'; ctx.lineWidth = 4;
+                  ctx.fillRect(bx + 8, by + 8, boxW - 16, boxH - 16); ctx.strokeRect(bx + 8, by + 8, boxW - 16, boxH - 16);
+                  const scx = bx + boxW / 2, scy = by + boxH / 2;
+                  ctx.fillStyle = '#070608'; ctx.beginPath(); ctx.arc(scx, scy, 45 + specificFreq * 12, 0, Math.PI * 2); ctx.fill();
+                  ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${0.2 + specificFreq * 0.8})`; ctx.lineWidth = 2 + specificFreq * 4; ctx.stroke();
+                  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1.5; ctx.beginPath();
+                  ctx.moveTo(scx - 30, scy - 30); ctx.lineTo(scx + 30, scy + 30); ctx.moveTo(scx + 30, scy - 30); ctx.lineTo(scx - 30, scy + 30); ctx.stroke();
+                }
+              }
+              ctx.fillStyle = 'rgba(9, 8, 10, 0.95)'; ctx.strokeStyle = hexAccent; ctx.lineWidth = 3;
+              ctx.fillRect(cx - 200, cy - 80, 400, 160); ctx.strokeRect(cx - 200, cy - 80, 400, 160);
+              ctx.fillStyle = '#fff'; ctx.font = '14px monospace'; ctx.textAlign = 'center'; ctx.fillText('NO SURFACE. NO COMMERCIAL.', cx, cy - 20);
+              ctx.fillStyle = hexAccent; ctx.font = 'bold 36px "Oswald", sans-serif'; ctx.fillText('WALL OF BASS', cx, cy + 30);
+
+            } else if (activeTemplateId.value === 3) {
+              ctx.save(); ctx.translate(cx, cy); ctx.rotate(globalTime * 0.0003);
+              ctx.fillStyle = '#1c1a20'; ctx.strokeStyle = '#413c47'; ctx.lineWidth = 12;
+              ctx.beginPath(); ctx.arc(0, 0, 200, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+              for (let i = 0; i < 40; i++) {
+                const angle = (i / 40) * Math.PI * 2, specificFreq = dataArray[i % 64] / 255, len = 200 + specificFreq * 50;
+                ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${0.4 + specificFreq * 0.6})`; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(Math.cos(angle) * 200, Math.sin(angle) * 200); ctx.lineTo(Math.cos(angle) * len, Math.sin(angle) * len); ctx.stroke();
+              }
+              ctx.fillStyle = '#09080a'; ctx.strokeStyle = hexAccent; ctx.lineWidth = 6;
+              ctx.beginPath(); ctx.arc(0, 0, 100, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+              ctx.restore();
+              ctx.fillStyle = '#fff'; ctx.font = 'bold 16px monospace'; ctx.textAlign = 'center'; ctx.fillText('SYSTEM CORRUPT', cx, cy - 20);
+              ctx.fillStyle = hexAccent; ctx.font = 'bold 24px "Oswald", sans-serif'; ctx.fillText('SEAL CORE V4', cx, cy + 25);
+
+            } else if (activeTemplateId.value === 4) {
+              for (let i = -1; i <= 1; i += 2) {
+                const tx = cx + i * 260;
+                ctx.fillStyle = '#111013'; ctx.strokeStyle = '#3e3a47'; ctx.lineWidth = 5;
+                ctx.fillRect(tx - 50, cy - 180, 100, 360); ctx.strokeRect(tx - 50, cy - 180, 100, 360);
+                const glow = Math.floor(pulse * 150) + 105;
+                ctx.strokeStyle = `rgba(${glow}, 60, 12, 0.95)`; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(tx, cy - 140); ctx.lineTo(tx, cy + 140); ctx.stroke();
+              }
+              ctx.fillStyle = '#1c1a20'; ctx.strokeStyle = '#27252c'; ctx.lineWidth = 6;
+              ctx.fillRect(cx - 110, 80, 220, 560); ctx.strokeRect(cx - 110, 80, 220, 560);
+              ctx.fillStyle = '#ffffff'; ctx.font = 'bold 64px "Oswald", sans-serif'; ctx.textAlign = 'center';
+              ctx.fillText('SY', cx, 230); ctx.fillText('CO', cx, 320);
+              ctx.fillStyle = hexAccent; ctx.fillText('23', cx, 410);
+              ctx.fillStyle = '#070608'; ctx.fillRect(cx - 90, 480, 180, 90); ctx.strokeStyle = '#1a1820'; ctx.strokeRect(cx - 90, 480, 180, 90);
+              ctx.strokeStyle = hexAccent; ctx.lineWidth = 2; ctx.beginPath();
+              for (let s = 0; s < 40; s++) {
+                const sx = cx - 90 + (s / 40) * 180, sy = 525 + (dataArray[s] - 128) * 0.3;
+                if (s === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+              }
+              ctx.stroke();
+
+            } else if (activeTemplateId.value === 5) {
+              ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'; ctx.lineWidth = 1;
+              for (let l = 0; l < canvas.width; l += 50) { ctx.beginPath(); ctx.moveTo(l, 0); ctx.lineTo(l, canvas.height); ctx.stroke(); }
+              const rx = 320, ry = 360;
+              ctx.strokeStyle = hexAccent; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(rx, ry, 150, 0, Math.PI * 2); ctx.stroke();
+              const sweep = (globalTime * 0.002) % (Math.PI * 2);
+              ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + Math.cos(sweep) * 150, ry + Math.sin(sweep) * 150); ctx.stroke();
+              ctx.fillStyle = 'rgba(15,14,18,0.9)'; ctx.strokeStyle = '#27252c'; ctx.lineWidth = 4;
+              ctx.fillRect(cx + 80, 120, 460, 480); ctx.strokeRect(cx + 80, 120, 460, 480);
+              ctx.fillStyle = hexAccent; ctx.font = 'bold 18px monospace'; ctx.textAlign="left"; ctx.fillText('// RADAR FREQUENCY CORE', cx + 110, 160);
+              ctx.fillStyle = '#2d231e';
+              for (let b = 0; b < 15; b++) {
+                const barH = (dataArray[b * 4] / 255) * 240;
+                ctx.fillRect(cx + 120 + b * 26, 220, 18, 260);
+                ctx.fillStyle = hexAccent; ctx.fillRect(cx + 120 + b * 26, 480 - barH, 18, barH); ctx.fillStyle = '#2d231e';
+              }
+            }
+
+            // Overlays
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.35)'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'left';
+            ctx.fillText(customTextHeader.value.toUpperCase(), 30, 45);
+
+            if (activeWatermark.value === 'SYCO23') {
+              ctx.fillStyle = hexAccent; ctx.font = 'bold 22px "Oswald", sans-serif'; ctx.textAlign = 'right';
+              ctx.fillText('SYCO23 v4 DECK', canvas.width - 30, 45);
+            } else if (activeWatermark.value === 'CRUCIFORM') {
+              ctx.fillStyle = '#fff'; ctx.font = 'bold 16px monospace'; ctx.textAlign = 'right';
+              ctx.fillText('✝ MECHANICAL TOTEM ACTIVE ✝', canvas.width - 30, 45);
+            }
+
+            if (overlayGlitch.value && Math.random() > 0.96) {
+              const glitchY = Math.random() * canvas.height, glitchH = 10 + Math.random() * 30;
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'; ctx.fillRect(0, glitchY, canvas.width, glitchH);
+              ctx.drawImage(canvas, 10, glitchY, canvas.width - 20, glitchH, -10, glitchY, canvas.width - 20, glitchH);
+            }
+
+            if (overlayGrid.value) {
+              ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'; ctx.lineWidth = 1; ctx.beginPath();
+              for (let i = 0; i < canvas.height; i += 40) { ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); }
+              ctx.stroke();
+            }
+
+            if (vhsFilter.value) {
+              ctx.fillStyle = 'rgba(255,255,255,0.03)';
+              for (let i = 0; i < canvas.height; i += 4) {
+                if (Math.random() > 0.4) ctx.fillRect(0, i, canvas.width, 2);
+              }
+            }
+
+            animationFrameId = requestAnimationFrame(renderLoop);
+          };
+
+          renderLoop();
+        });
+
+        return {
+          appId, accentOptions, activeAccent, cssProps, changeAccent,
+          isPlayingAudio, gainValue, lowPassFreq, isMuted, activeSource, customUrl, uploadedFileName,
+          handleSourceChange, handleGainChange, handleLowPassChange, handleFileUpload, startGlobalAudio, stopGlobalAudio, toggleMute,
+          nodes, stateColors, actionNode, batchAction,
+          isArmed, isLive, isTvMode, streamTime, droppedPackets, cpuOverhead, totalBitrate, liveNodesCount, sessionTimeString, currentFormat,
+          toggleArm, toggleLaunchIngest, toggleTvMode,
+          activeSubTab, activeTemplateId, customTextHeader, activeWatermark, activeBackdrop, backgroundStrobe, visualTemplates, activeTemplateName,
+          overlayGrid, overlayGlitch, vhsFilter, toggleGrid, toggleGlitch, toggleVhs,
+          logs, logClass, logTextClass, injectSimulationFault,
+          drawerNode, toastMessage, openSetupDrawer, closeSetupDrawer, generateFfmpegCommand, copyText,
+          logContainer, visualizerCanvas
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

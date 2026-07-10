@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 350" fill="none">
+  <defs>
+    <linearGradient id="sc-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#050506"/>
+      <stop offset="100%" style="stop-color:#0b0a0d"/>
+    </linearGradient>
+    <filter id="glow-turquoise">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="800" height="350" fill="url(#sc-bg)"/>
+
+  <!-- Title -->
+  <text x="240" y="30" font-family="'JetBrains Mono', monospace" font-size="13" fill="#6b7280" letter-spacing="0.15em">SELF-CAST DATA FLOW</text>
+
+  <!-- Step 1: Operator adds local destination -->
+  <rect x="40" y="80" width="150" height="70" rx="4" fill="#121115" stroke="#4a7c7a" stroke-width="1.5"/>
+  <text x="60" y="105" font-family="'JetBrains Mono', monospace" font-size="9" fill="#4a7c7a" font-weight="700">STEP 1</text>
+  <text x="60" y="125" font-family="'Inter', sans-serif" font-size="11" fill="#ded9e2">Add Local</text>
+  <text x="60" y="140" font-family="'Inter', sans-serif" font-size="11" fill="#ded9e2">Destination</text>
+
+  <!-- Arrow 1-2 -->
+  <line x1="190" y1="115" x2="240" y2="115" stroke="#4a7c7a" stroke-width="1.5" marker-end="url(#arrow-tq)"/>
+  <text x="200" y="108" font-family="'JetBrains Mono', monospace" font-size="7" fill="#6b7280">addDestination</text>
+
+  <!-- Step 2: Store records -->
+  <rect x="240" y="80" width="150" height="70" rx="4" fill="#121115" stroke="#9a7b2e" stroke-width="1.5"/>
+  <text x="260" y="105" font-family="'JetBrains Mono', monospace" font-size="9" fill="#9a7b2e" font-weight="700">STEP 2</text>
+  <text x="260" y="125" font-family="'Inter', sans-serif" font-size="11" fill="#ded9e2">Store updates</text>
+  <text x="260" y="140" font-family="'Inter', sans-serif" font-size="11" fill="#ded9e2">destinations[]</text>
+
+  <!-- Arrow 2-3 -->
+  <line x1="390" y1="115" x2="440" y2="115" stroke="#9a7b2e" stroke-width="1.5"/>
+  <text x="398" y="108" font-family="'JetBrains Mono', monospace" font-size="7" fill="#6b7280">reactive</text>
+
+  <!-- Step 3: Status cycling -->
+  <rect x="440" y="80" width="150" height="70" rx="4" fill="#121115" stroke="#b7410e" stroke-width="1.5" filter="url(#glow-turquoise)"/>
+  <text x="460" y="105" font-family="'JetBrains Mono', monospace" font-size="9" fill="#b7410e" font-weight="700">STEP 3</text>
+  <text x="460" y="125" font-family="'Inter', sans-serif" font-size="11" fill="#ded9e2">Cycle to LIVE</text>
+  <text x="460" y="140" font-family="'Inter', sans-serif" font-size="11" fill="#ded9e2">configured→live</text>
+
+  <!-- Arrow 3-4 -->
+  <line x1="590" y1="115" x2="640" y2="115" stroke="#b7410e" stroke-width="1.5"/>
+  <text x="600" y="108" font-family="'JetBrains Mono', monospace" font-size="7" fill="#6b7280">getLocalDest()</text>
+
+  <!-- Step 4: Player shows SELF CAST -->
+  <rect x="640" y="60" width="140" height="110" rx="4" fill="#050506" stroke="#b7410e" stroke-width="2" filter="url(#glow-turquoise)"/>
+  <text x="660" y="90" font-family="'JetBrains Mono', monospace" font-size="9" fill="#b7410e" font-weight="700">PREVIEW PLAYER</text>
+  <text x="660" y="115" font-family="'JetBrains Mono', monospace" font-size="16" fill="#b7410e" font-weight="700" letter-spacing="0.1em">SELF CAST</text>
+  <text x="660" y="138" font-family="'JetBrains Mono', monospace" font-size="9" fill="#6b7280">Studio Feed</text>
+  <text x="660" y="155" font-family="'JetBrains Mono', monospace" font-size="8" fill="#4a7c7a">local · 1080p</text>
+
+  <!-- Bottom: State flow -->
+  <rect x="40" y="200" width="740" height="120" rx="4" fill="#0b0a0d" stroke="#232128" stroke-width="1"/>
+  <text x="60" y="222" font-family="'JetBrains Mono', monospace" font-size="9" fill="#6b7280" letter-spacing="0.1em">STATE LIFECYCLE</text>
+
+  <!-- Status boxes -->
+  <rect x="60" y="240" width="90" height="30" rx="3" fill="none" stroke="#6b7280" stroke-width="1"/>
+  <text x="76" y="260" font-family="'JetBrains Mono', monospace" font-size="9" fill="#8a8194">IDLE</text>
+
+  <line x1="150" y1="255" x2="180" y2="255" stroke="#312e38" stroke-width="1.5"/>
+  <text x="155" y="248" font-family="'JetBrains Mono', monospace" font-size="6" fill="#6b7280">click</text>
+
+  <rect x="180" y="240" width="90" height="30" rx="3" fill="none" stroke="#8a8194" stroke-width="1"/>
+  <text x="190" y="260" font-family="'JetBrains Mono', monospace" font-size="9" fill="#8a8194">CONFIGURED</text>
+
+  <line x1="270" y1="255" x2="300" y2="255" stroke="#312e38" stroke-width="1.5"/>
+  <text x="275" y="248" font-family="'JetBrains Mono', monospace" font-size="6" fill="#6b7280">click</text>
+
+  <rect x="300" y="240" width="90" height="30" rx="3" fill="none" stroke="#9a7b2e" stroke-width="1"/>
+  <text x="318" y="260" font-family="'JetBrains Mono', monospace" font-size="9" fill="#9a7b2e">ARMED</text>
+
+  <line x1="390" y1="255" x2="420" y2="255" stroke="#312e38" stroke-width="1.5"/>
+  <text x="395" y="248" font-family="'JetBrains Mono', monospace" font-size="6" fill="#6b7280">click</text>
+
+  <rect x="420" y="240" width="90" height="30" rx="3" fill="none" stroke="#4a7c7a" stroke-width="1"/>
+  <text x="432" y="260" font-family="'JetBrains Mono', monospace" font-size="9" fill="#4a7c7a">CONNECTING</text>
+
+  <line x1="510" y1="255" x2="540" y2="255" stroke="#312e38" stroke-width="1.5"/>
+  <text x="515" y="248" font-family="'JetBrains Mono', monospace" font-size="6" fill="#6b7280">click</text>
+
+  <rect x="540" y="240" width="90" height="30" rx="3" fill="none" stroke="#b7410e" stroke-width="1.5"/>
+  <text x="560" y="260" font-family="'JetBrains Mono', monospace" font-size="9" fill="#b7410e" font-weight="700">LIVE</text>
+
+  <line x1="630" y1="255" x2="660" y2="255" stroke="#312e38" stroke-width="1.5"/>
+  <text x="635" y="248" font-family="'JetBrains Mono', monospace" font-size="6" fill="#6b7280">click</text>
+
+  <rect x="660" y="240" width="90" height="30" rx="3" fill="none" stroke="#6b7280" stroke-width="1"/>
+  <text x="676" y="260" font-family="'JetBrains Mono', monospace" font-size="9" fill="#6b7280">IDLE</text>
+
+  <!-- Highlight: LIVE triggers self-cast -->
+  <rect x="540" y="285" width="210" height="24" rx="3" fill="none" stroke="#b7410e" stroke-width="0.8" stroke-dasharray="3 2"/>
+  <text x="550" y="301" font-family="'JetBrains Mono', monospace" font-size="7" fill="#b7410e">⚡ LIVE + provider=local → SELF CAST</text>
+</svg>

@@ -1,0 +1,74 @@
+:root {
+  /* Surfaces */
+  --syco-surface-0: #050506;
+  --syco-surface-1: #0b0a0d;
+  --syco-surface-2: #121115;
+  --syco-surface-3: #18161b;
+  --syco-surface-4: #070608;
+
+  /* Borders / structure */
+  --syco-border: #232128;
+  --syco-border-strong: #27252c;
+  --syco-border-bright: #312e38;
+
+  /* Text */
+  --syco-text: #ded9e2;
+  --syco-text-secondary: #8a8194;
+  --syco-text-muted: #6b7280;
+
+  /* Signal colors */
+  --syco-rust: #b7410e;
+  --syco-crimson: #8b1a1a;
+  --syco-amber: #9a7b2e;
+  --syco-copper: #6b8e6b;
+  --syco-turquoise: #4a7c7a;
+  --syco-ochre: #8b6914;
+
+  /* Semantic */
+  --syco-danger: var(--syco-crimson);
+  --syco-success: var(--syco-copper);
+  --syco-warning: var(--syco-amber);
+  --syco-live: var(--syco-rust);
+
+  /* Spacing (4px grid) */
+  --syco-space-1: 4px;
+  --syco-space-2: 8px;
+  --syco-space-3: 12px;
+  --syco-space-4: 16px;
+  --syco-space-6: 24px;
+  --syco-space-8: 32px;
+
+  /* Typography */
+  --syco-font-display: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --syco-font-body: 'Inter', system-ui, sans-serif;
+  --syco-font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+
+  /* Motion */
+  --syco-duration-fast: 100ms;
+  --syco-duration-normal: 200ms;
+  --syco-easing: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Z-layer */
+  --syco-z-base: 0;
+  --syco-z-nav: 10;
+  --syco-z-overlay: 50;
+  --syco-z-modal: 100;
+}
+
+/* Layout mode overrides — data-mode attribute is set on <html> */
+[data-mode="portrait"] {
+  --syco-nav-height: 56px;
+  --syco-header-height: 48px;
+}
+
+[data-mode="landscape"],
+[data-mode="tablet"] {
+  --syco-nav-height: 48px;
+  --syco-header-height: 56px;
+}
+
+[data-mode="tv"] {
+  --syco-nav-height: 72px;
+  --syco-header-height: 80px;
+  --syco-text-base: 1.25rem;
+}

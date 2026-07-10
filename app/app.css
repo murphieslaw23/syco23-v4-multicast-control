@@ -1,0 +1,108 @@
+@import '../assets/css/variables.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--syco-surface-0);
+  color: var(--syco-text);
+  font-family: var(--syco-font-body);
+  font-size: var(--syco-text-base, 1rem);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.syco-app {
+  display: grid;
+  grid-template-rows: var(--syco-header-height, 56px) 1fr var(--syco-nav-height, 48px);
+  min-height: 100vh;
+  background: var(--syco-surface-0);
+}
+
+.syco-header {
+  display: flex;
+  align-items: center;
+  gap: var(--syco-space-3);
+  padding: 0 var(--syco-space-4);
+  background: var(--syco-surface-2);
+  border-bottom: 1px solid var(--syco-border);
+}
+
+.syco-brand {
+  font-family: var(--syco-font-display);
+  font-weight: 700;
+  font-size: 1.125rem;
+  letter-spacing: 0.05em;
+  color: var(--syco-text);
+}
+
+.syco-sub {
+  font-family: var(--syco-font-mono);
+  font-size: 0.75rem;
+  color: var(--syco-text-muted);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.syco-status {
+  margin-left: auto;
+  font-family: var(--syco-font-mono);
+  font-size: 0.75rem;
+  color: var(--syco-text-muted);
+  padding: var(--syco-space-1) var(--syco-space-2);
+  border: 1px solid var(--syco-border);
+  border-radius: 2px;
+}
+
+.syco-status.live {
+  color: var(--syco-live);
+  border-color: var(--syco-live);
+}
+
+.syco-main {
+  padding: var(--syco-space-4);
+  overflow-y: auto;
+}
+
+.syco-nav {
+  display: flex;
+  background: var(--syco-surface-2);
+  border-top: 1px solid var(--syco-border);
+}
+
+.syco-nav-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--syco-space-2);
+  min-height: 44px;
+  padding: var(--syco-space-2);
+  background: transparent;
+  border: none;
+  color: var(--syco-text-secondary);
+  font-family: var(--syco-font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--syco-duration-fast) var(--syco-easing);
+}
+
+.syco-nav-item:hover {
+  color: var(--syco-text);
+}
+
+.syco-nav-item.active {
+  color: var(--syco-rust);
+  box-shadow: inset 0 -2px 0 var(--syco-rust);
+}
+
+/* TV mode reduced motion */
+.syco-app[data-mode="tv"] .syco-nav-item {
+  transition: none;
+}
