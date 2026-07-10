@@ -60,7 +60,7 @@ export function buildFfmpegFanoutCommand(options: FfmpegBuildOptions): FfmpegCom
   for (const destination of active) {
     const profile = resolveProfile(destination, options.profiles)
     const adapter = getProviderAdapter(destination.provider)
-    const errors = adapter.validate(destination)
+    const errors = [...adapter.validate(destination), ...adapter.validateProfile({ ...profile, provider: destination.provider })]
     if (errors.length) throw new Error(`${destination.label}: ${errors.join('; ')}`)
 
     const streamKey = options.streamKeys?.[destination.streamKeyRef]
@@ -81,7 +81,7 @@ export function buildFfmpegFanoutCommand(options: FfmpegBuildOptions): FfmpegCom
       '-b:v', `${profile.videoBitrate}k`,
       '-maxrate', `${profile.videoBitrate}k`,
       '-bufsize', `${profile.videoBitrate * 2}k`,
-      '-g', String(profile.fps * 2),
+      '-g', String(profile.fps * adapter.profilePolicy.keyframeIntervalSeconds),
       '-c:a', 'aac',
       '-b:a', `${profile.audioBitrate}k`,
       '-ar', '48000',

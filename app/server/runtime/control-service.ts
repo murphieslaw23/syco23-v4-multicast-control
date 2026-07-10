@@ -17,7 +17,7 @@ import {
   appendRuntimeLog,
   createRuntimeId,
 } from "../runtime-store";
-import { getProviderAdapter } from "../provider-registry";
+import { getProviderAdapter, validateProfileForProvider } from "../provider-registry";
 import type { PersistentDatabase } from "../persistent-db";
 import type { RuntimeEventBus } from "./event-bus";
 import { EnvironmentSecretStore, type SecretStore } from "./secret-store";
@@ -170,14 +170,8 @@ export class ControlService {
 
   async createProfile(profile: OutputProfile): Promise<OutputProfile> {
     const record = { ...profile, id: profile.id || createRuntimeId("profile") };
-    if (
-      record.width < 16 ||
-      record.height < 16 ||
-      record.fps < 1 ||
-      record.videoBitrate < 1 ||
-      record.audioBitrate < 1
-    )
-      throw new Error("Invalid output profile dimensions or bitrate");
+    const errors = validateProfileForProvider(record);
+    if (errors.length) throw new ApiError("PROFILE_INVALID", errors.join("; "), 422);
     await this.persistence.transaction((db) => insertProfile(db, record));
     getRuntimeStore().profiles.push(record);
     this.events.publish("profile.created", record);

@@ -24,6 +24,9 @@ import { HlsPreviewRuntime } from "./runtime/hls-preview-runtime";
 import { PreviewTicketStore } from "./runtime/preview-tickets";
 import type { DestinationState, OutputProfile, SceneGraph, Template } from "../types";
 import { AssetStore, renderSceneSvg } from "./scene/scene-runtime";
+import { listProviderAdapters } from "./provider-registry";
+import { queryLogs, logsToCsv } from "./dao/logs";
+import { SystemTelemetry } from "./runtime/system-telemetry";
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "0.0.0.0";
@@ -66,6 +69,7 @@ const preview = new HlsPreviewRuntime(events, {
   listSize: Number(process.env.SYCO_PREVIEW_LIST_SIZE || 6),
 });
 const assets = new AssetStore(persistence, process.env.SYCO_ASSET_DIR || join(process.cwd(), "data/assets"));
+const telemetry = new SystemTelemetry(resolve(process.env.SYCO_DATA_DIR || join(process.cwd(), "data")));
 const backupRoot = resolve(
   process.env.SYCO_BACKUP_DIR || join(process.cwd(), "data/backups"),
 );
@@ -398,8 +402,12 @@ async function route(
     if (request.method === "GET" && url.pathname === "/api/status")
       return json(response, 200, {
         ok: true,
-        data: { ...service.status(), watchdog: watchdog.snapshot() },
-      });
+        data: { ...service.status(), watchdog: watchdog.snapshot(), system: await telemetry.snapshot() },
+      }, requestId);
+    if (request.method === "GET" && url.pathname === "/api/system/metrics")
+      return json(response, 200, { ok: true, data: await telemetry.snapshot() }, requestId);
+    if (request.method === "GET" && url.pathname === "/api/providers")
+      return json(response, 200, { ok: true, data: listProviderAdapters().map(({ id, label, capabilities, profilePolicy }) => ({ id, label, capabilities, profilePolicy })) }, requestId);
     if (request.method === "GET" && url.pathname === "/api/destination-workers")
       return json(
         response,
@@ -477,11 +485,39 @@ async function route(
         ok: true,
         data: events.history(Number(url.searchParams.get("limit") || 100)),
       });
-    if (request.method === "GET" && url.pathname === "/api/logs")
-      return json(response, 200, {
-        ok: true,
-        data: service.logs(Number(url.searchParams.get("limit") || 200)),
+    if (request.method === "GET" && url.pathname === "/api/logs") {
+      const level = url.searchParams.get("level") || undefined;
+      const data = queryLogs(persistence.database, {
+        limit: Number(url.searchParams.get("limit") || 100),
+        offset: Number(url.searchParams.get("offset") || 0),
+        level: level as import("../types").LogEntry["level"] | undefined,
+        source: url.searchParams.get("source") || undefined,
+        search: url.searchParams.get("search") || undefined,
+        from: url.searchParams.get("from") || undefined,
+        to: url.searchParams.get("to") || undefined,
       });
+      return json(response, 200, { ok: true, data }, requestId);
+    }
+    if (request.method === "GET" && url.pathname === "/api/logs/export.csv") {
+      requireRole(context, "operator");
+      const level = url.searchParams.get("level") || undefined;
+      const page = queryLogs(persistence.database, {
+        limit: Math.min(Number(url.searchParams.get("limit") || 500), 500),
+        level: level as import("../types").LogEntry["level"] | undefined,
+        source: url.searchParams.get("source") || undefined,
+        search: url.searchParams.get("search") || undefined,
+        from: url.searchParams.get("from") || undefined,
+        to: url.searchParams.get("to") || undefined,
+      });
+      response.writeHead(200, {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition": 'attachment; filename="syco23-logs.csv"',
+        "cache-control": "no-store",
+        "x-request-id": requestId,
+      });
+      response.end(logsToCsv(page.items));
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/api/sessions")
       return json(response, 200, {
         ok: true,
@@ -792,6 +828,8 @@ async function main(): Promise<void> {
       scheduler.stop();
       watchdog.stop();
       metadata.stop();
+      telemetry.close();
+      sockets.close();
       void Promise.allSettled([service.stopPipeline(), preview.stop()])
         .finally(() => server.close(() => process.exit(0)));
     });
