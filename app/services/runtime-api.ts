@@ -1,7 +1,15 @@
 import type { DestinationState, OutputProfile, Provider, SceneGraph, Template } from '../types'
 import type { PipelineConfig, PipelineStatus } from '../composables/usePipeline'
 
-interface ApiFailure { code: string; message: string; requestId?: string }
+export interface ApiFailure { code: string; message: string; requestId?: string }
+export interface CurrentUser { actor: string; role: 'viewer'|'operator'|'admin' }
+export interface RuntimeLog { id:string; timestamp:string; level:string; source:string; message:string }
+export interface RuntimeSession { id:string; title:string; startedAt:string; endedAt:string|null; online:boolean }
+export interface ScheduleJob { id:string; name:string; action:'pipeline.start'|'pipeline.stop'|'destination.enable'|'destination.disable'; runAt:string; recurrenceMinutes:number|null; payload:Record<string,unknown>; enabled:boolean; lastRunAt:string|null; nextRunAt:string; failureCount:number; lastError:string|null }
+export interface Incident { id:string; openedAt:string; closedAt:string|null; severity:'warning'|'critical'; status:'open'|'resolved'; title:string; description:string; source:string; resolution:string|null }
+export interface AuditEntry { id:string; timestamp:string; actor:string; role:string; action:string; resource:string; resourceId:string|null; outcome:string; detail:Record<string,unknown> }
+export interface BackupRecord { id:string }
+export interface WorkerSnapshot { id?:string; destinationId?:string; state:string; pid:number|null; health?:string; restartCount:number; lastError:string|null; cooldownUntil?:string|null; metrics?:Record<string,number> }
 interface Envelope<T> { ok: boolean; data?: T; error?: ApiFailure | string }
 
 function apiToken(): string {
@@ -18,7 +26,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const payload = response.status === 204 ? { ok: true } : await response.json() as Envelope<T>
   if (!response.ok || !payload.ok) {
     const failure = typeof payload.error === 'string' ? payload.error : payload.error?.message
-    throw new Error(failure || `Request failed with ${response.status}`)
+    const error = new Error(failure || `Request failed with ${response.status}`) as Error & { code?: string; requestId?: string }
+    if (typeof payload.error !== 'string') { error.code = payload.error?.code; error.requestId = payload.error?.requestId }
+    throw error
   }
   return payload.data as T
 }
@@ -51,6 +61,23 @@ export interface PreviewStatus {
 export interface ManagedAsset { id: string; filename: string; mimeType: string; size: number; sha256: string; createdAt: string }
 
 export const runtimeApi = {
+
+  me: () => request<CurrentUser>('/api/me'),
+  logs: (limit=500) => request<RuntimeLog[]>(`/api/logs?limit=${limit}`),
+  sessions: (limit=500) => request<RuntimeSession[]>(`/api/sessions?limit=${limit}`),
+  schedules: () => request<ScheduleJob[]>('/api/schedules'),
+  createSchedule: (input: Omit<ScheduleJob,'id'|'lastRunAt'|'failureCount'|'lastError'>) => request<ScheduleJob>('/api/schedules',{method:'POST',body:JSON.stringify(input)}),
+  deleteSchedule: (id:string) => request<void>(`/api/schedules/${encodeURIComponent(id)}`,{method:'DELETE'}),
+  incidents: () => request<Incident[]>('/api/incidents'),
+  resolveIncident: (id:string,resolution:string) => request<Incident>(`/api/incidents/${encodeURIComponent(id)}/resolve`,{method:'POST',body:JSON.stringify({resolution})}),
+  audit: (limit=500) => request<AuditEntry[]>(`/api/audit?limit=${limit}`),
+  backups: () => request<BackupRecord[]>('/api/backups'),
+  createBackup: () => request<BackupRecord>('/api/backups',{method:'POST'}),
+  restoreBackup: (id:string) => request<{restored:boolean;id:string}>('/api/backups/restore',{method:'POST',body:JSON.stringify({id})}),
+  workers: () => request<WorkerSnapshot[]>('/api/destination-workers'),
+  createDestination: (input: DestinationState) => request<DestinationState>('/api/destinations',{method:'POST',body:JSON.stringify(input)}),
+  updateDestination: (id:string,patch:Partial<DestinationState>) => request<DestinationState>(`/api/destinations/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(patch)}),
+  deleteDestination: (id:string) => request<void>(`/api/destinations/${encodeURIComponent(id)}`,{method:'DELETE'}),
   status: () => request<RuntimeStatus>('/api/status'),
   destinations: () => request<DestinationState[]>('/api/destinations'),
   profiles: () => request<OutputProfile[]>('/api/profiles'),
