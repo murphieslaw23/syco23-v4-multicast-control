@@ -1,24 +1,322 @@
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
-import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { PersistentDatabase } from '../persistent-db'
-import type { Role } from './operations'
-export interface AuthIdentity { actor:string; role:Role; userId?:string; sessionId?:string; csrfToken?:string }
-export interface UserRecord { id:string;username:string;role:Role;enabled:boolean;createdAt:string;updatedAt:string;lastLoginAt:string|null }
-function rows(db:PersistentDatabase['database'],sql:string,params:unknown[]=[]):unknown[][]{return db.exec(sql,params)[0]?.values??[]}
-function hashPassword(password:string,salt=randomBytes(16).toString('hex')){if(password.length<12)throw new Error('Password must contain at least 12 characters');return `scrypt$${salt}$${scryptSync(password,salt,64).toString('hex')}`}
-function verifyPassword(password:string,encoded:string){const[k,s,e]=encoded.split('$');if(k!=='scrypt'||!s||!e)return false;const a=scryptSync(password,s,64),b=Buffer.from(e,'hex');return a.length===b.length&&timingSafeEqual(a,b)}
-function cookies(r:IncomingMessage){return Object.fromEntries(String(r.headers.cookie||'').split(';').map(v=>v.trim()).filter(Boolean).map(v=>{const i=v.indexOf('=');return[decodeURIComponent(v.slice(0,i)),decodeURIComponent(v.slice(i+1))]}))}
-export class AuthService{
- constructor(private readonly persistence:PersistentDatabase,private readonly ttlMs=8*60*60_000){}
- async initialize(){await this.persistence.transaction(db=>{db.run('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY,username TEXT NOT NULL UNIQUE,password_hash TEXT NOT NULL,role TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,last_login_at TEXT)');db.run('CREATE TABLE IF NOT EXISTS user_sessions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,csrf_token TEXT NOT NULL,created_at TEXT NOT NULL,expires_at TEXT NOT NULL,last_seen_at TEXT NOT NULL,revoked_at TEXT,ip_address TEXT,user_agent TEXT)');db.run('CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token_hash)')});const u=process.env.SYCO_BOOTSTRAP_ADMIN_USER?.trim(),p=process.env.SYCO_BOOTSTRAP_ADMIN_PASSWORD;if(u&&p&&!this.find(u))await this.createUser(u,p,'admin')}
- private find(username:string){return rows(this.persistence.database,'SELECT id,username,password_hash,role,enabled FROM users WHERE lower(username)=lower(?)',[username])[0]}
- listUsers():UserRecord[]{return rows(this.persistence.database,'SELECT id,username,role,enabled,created_at,updated_at,last_login_at FROM users ORDER BY username').map(r=>({id:String(r[0]),username:String(r[1]),role:r[2] as Role,enabled:Number(r[3])===1,createdAt:String(r[4]),updatedAt:String(r[5]),lastLoginAt:r[6]==null?null:String(r[6])}))}
- async createUser(username:string,password:string,role:Role){if(!/^[A-Za-z0-9._-]{3,64}$/.test(username))throw new Error('Username must be 3-64 safe characters');if(!['viewer','operator','admin'].includes(role))throw new Error('Invalid role');const now=new Date().toISOString(),id=crypto.randomUUID();await this.persistence.transaction(db=>db.run('INSERT INTO users (id,username,password_hash,role,enabled,created_at,updated_at,last_login_at) VALUES (?,?,?,?,1,?,?,NULL)',[id,username,hashPassword(password),role,now,now]));return this.listUsers().find(v=>v.id===id)!}
- async login(username:string,password:string,r:IncomingMessage){const row=this.find(username);if(!row||Number(row[4])!==1||!verifyPassword(password,String(row[2])))throw new Error('Invalid username or password');const token=randomBytes(32).toString('base64url'),hash=scryptSync(token,'syco23-session',32).toString('hex'),csrf=randomBytes(24).toString('base64url'),now=new Date(),exp=new Date(now.getTime()+this.ttlMs),id=crypto.randomUUID();await this.persistence.transaction(db=>{db.run('INSERT INTO user_sessions (id,user_id,token_hash,csrf_token,created_at,expires_at,last_seen_at,revoked_at,ip_address,user_agent) VALUES (?,?,?,?,?,?,?,NULL,?,?)',[id,String(row[0]),hash,csrf,now.toISOString(),exp.toISOString(),now.toISOString(),String(r.socket.remoteAddress||''),String(r.headers['user-agent']||'').slice(0,500)]);db.run('UPDATE users SET last_login_at=?,updated_at=? WHERE id=?',[now.toISOString(),now.toISOString(),String(row[0])])});return{identity:{actor:String(row[1]),role:row[3] as Role,userId:String(row[0]),sessionId:id,csrfToken:csrf},token,expiresAt:exp.toISOString()}}
- authenticate(r:IncomingMessage):AuthIdentity|null{const token=cookies(r).syco_session;if(!token)return null;const hash=scryptSync(token,'syco23-session',32).toString('hex'),now=new Date().toISOString(),row=rows(this.persistence.database,'SELECT s.id,u.id,u.username,u.role,s.csrf_token,s.expires_at FROM user_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND u.enabled=1',[hash])[0];if(!row||String(row[5])<=now)return null;this.persistence.database.run('UPDATE user_sessions SET last_seen_at=? WHERE id=?',[now,String(row[0])]);return{actor:String(row[2]),role:row[3] as Role,userId:String(row[1]),sessionId:String(row[0]),csrfToken:String(row[4])}}
- assertCsrf(r:IncomingMessage,i:AuthIdentity){if(i.sessionId&&r.method&&!['GET','HEAD','OPTIONS'].includes(r.method)&&r.headers['x-csrf-token']!==i.csrfToken)throw new Error('Invalid CSRF token')}
- async logout(i:AuthIdentity){if(i.sessionId)await this.persistence.transaction(db=>db.run('UPDATE user_sessions SET revoked_at=? WHERE id=?',[new Date().toISOString(),i.sessionId]))}
- setSessionCookie(res:ServerResponse,token:string,maxAge:number){res.setHeader('set-cookie',`syco_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}; ${process.env.NODE_ENV==='production'?'Secure; ':''}`)}
- clearSessionCookie(res:ServerResponse){res.setHeader('set-cookie','syco_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0')}
- async prune(){await this.persistence.transaction(db=>db.run('DELETE FROM user_sessions WHERE expires_at<? OR revoked_at IS NOT NULL',[new Date().toISOString()]))}
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import type { PersistentDatabase } from "../persistent-db";
+import type { Role } from "./operations";
+export interface AuthIdentity {
+  actor: string;
+  role: Role;
+  userId?: string;
+  sessionId?: string;
+  csrfToken?: string;
+}
+export interface UserRecord {
+  id: string;
+  username: string;
+  role: Role;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt: string | null;
+}
+export interface SessionRecord {
+  id: string;
+  userId: string;
+  username: string;
+  role: Role;
+  createdAt: string;
+  expiresAt: string;
+  lastSeenAt: string;
+  revokedAt: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  current: boolean;
+}
+function rows(
+  db: PersistentDatabase["database"],
+  sql: string,
+  params: unknown[] = [],
+): unknown[][] {
+  return db.exec(sql, params)[0]?.values ?? [];
+}
+function hashPassword(
+  password: string,
+  salt = randomBytes(16).toString("hex"),
+) {
+  if (password.length < 12)
+    throw new Error("Password must contain at least 12 characters");
+  return `scrypt$${salt}$${scryptSync(password, salt, 64).toString("hex")}`;
+}
+function verifyPassword(password: string, encoded: string) {
+  const [k, s, e] = encoded.split("$");
+  if (k !== "scrypt" || !s || !e) return false;
+  const a = scryptSync(password, s, 64),
+    b = Buffer.from(e, "hex");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+function cookies(r: IncomingMessage) {
+  return Object.fromEntries(
+    String(r.headers.cookie || "")
+      .split(";")
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .map((v) => {
+        const i = v.indexOf("=");
+        return [
+          decodeURIComponent(v.slice(0, i)),
+          decodeURIComponent(v.slice(i + 1)),
+        ];
+      }),
+  );
+}
+export class AuthService {
+  constructor(
+    private readonly persistence: PersistentDatabase,
+    private readonly ttlMs = 8 * 60 * 60_000,
+  ) {}
+  async initialize() {
+    await this.persistence.transaction((db) => {
+      db.run(
+        "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY,username TEXT NOT NULL UNIQUE,password_hash TEXT NOT NULL,role TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,last_login_at TEXT)",
+      );
+      db.run(
+        "CREATE TABLE IF NOT EXISTS user_sessions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,csrf_token TEXT NOT NULL,created_at TEXT NOT NULL,expires_at TEXT NOT NULL,last_seen_at TEXT NOT NULL,revoked_at TEXT,ip_address TEXT,user_agent TEXT)",
+      );
+      db.run(
+        "CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token_hash)",
+      );
+    });
+    const u = process.env.SYCO_BOOTSTRAP_ADMIN_USER?.trim(),
+      p = process.env.SYCO_BOOTSTRAP_ADMIN_PASSWORD;
+    if (u && p && !this.find(u)) await this.createUser(u, p, "admin");
+  }
+  private find(username: string) {
+    return rows(
+      this.persistence.database,
+      "SELECT id,username,password_hash,role,enabled FROM users WHERE lower(username)=lower(?)",
+      [username],
+    )[0];
+  }
+  listUsers(): UserRecord[] {
+    return rows(
+      this.persistence.database,
+      "SELECT id,username,role,enabled,created_at,updated_at,last_login_at FROM users ORDER BY username",
+    ).map((r) => ({
+      id: String(r[0]),
+      username: String(r[1]),
+      role: r[2] as Role,
+      enabled: Number(r[3]) === 1,
+      createdAt: String(r[4]),
+      updatedAt: String(r[5]),
+      lastLoginAt: r[6] == null ? null : String(r[6]),
+    }));
+  }
+  async createUser(username: string, password: string, role: Role) {
+    if (!/^[A-Za-z0-9._-]{3,64}$/.test(username))
+      throw new Error("Username must be 3-64 safe characters");
+    if (!["viewer", "operator", "admin"].includes(role))
+      throw new Error("Invalid role");
+    const now = new Date().toISOString(),
+      id = crypto.randomUUID();
+    await this.persistence.transaction((db) =>
+      db.run(
+        "INSERT INTO users (id,username,password_hash,role,enabled,created_at,updated_at,last_login_at) VALUES (?,?,?,?,1,?,?,NULL)",
+        [id, username, hashPassword(password), role, now, now],
+      ),
+    );
+    return this.listUsers().find((v) => v.id === id)!;
+  }
+
+  async updateUser(id: string, input: { role?: Role; enabled?: boolean }) {
+    const current = this.listUsers().find((user) => user.id === id);
+    if (!current) throw new Error("User not found");
+    if (
+      input.role !== undefined &&
+      !["viewer", "operator", "admin"].includes(input.role)
+    )
+      throw new Error("Invalid role");
+    const role = input.role ?? current.role,
+      enabled = input.enabled ?? current.enabled,
+      now = new Date().toISOString();
+    await this.persistence.transaction((db) => {
+      db.run("UPDATE users SET role=?,enabled=?,updated_at=? WHERE id=?", [
+        role,
+        enabled ? 1 : 0,
+        now,
+        id,
+      ]);
+      if (!enabled)
+        db.run(
+          "UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+          [now, id],
+        );
+    });
+    return this.listUsers().find((user) => user.id === id)!;
+  }
+  async resetPassword(id: string, password: string) {
+    const now = new Date().toISOString();
+    await this.persistence.transaction((db) => {
+      db.run("UPDATE users SET password_hash=?,updated_at=? WHERE id=?", [
+        hashPassword(password),
+        now,
+        id,
+      ]);
+      if (!db.getRowsModified()) throw new Error("User not found");
+      db.run(
+        "UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+        [now, id],
+      );
+    });
+  }
+  listSessions(currentSessionId?: string, userId?: string): SessionRecord[] {
+    const sql = `SELECT s.id,s.user_id,u.username,u.role,s.created_at,s.expires_at,s.last_seen_at,s.revoked_at,s.ip_address,s.user_agent FROM user_sessions s JOIN users u ON u.id=s.user_id ${userId ? "WHERE s.user_id=?" : ""} ORDER BY s.created_at DESC`;
+    return rows(this.persistence.database, sql, userId ? [userId] : []).map(
+      (r) => ({
+        id: String(r[0]),
+        userId: String(r[1]),
+        username: String(r[2]),
+        role: r[3] as Role,
+        createdAt: String(r[4]),
+        expiresAt: String(r[5]),
+        lastSeenAt: String(r[6]),
+        revokedAt: r[7] == null ? null : String(r[7]),
+        ipAddress: r[8] == null ? null : String(r[8]),
+        userAgent: r[9] == null ? null : String(r[9]),
+        current: String(r[0]) === currentSessionId,
+      }),
+    );
+  }
+  async revokeSession(id: string) {
+    const now = new Date().toISOString();
+    await this.persistence.transaction((db) => {
+      db.run(
+        "UPDATE user_sessions SET revoked_at=? WHERE id=? AND revoked_at IS NULL",
+        [now, id],
+      );
+      if (!db.getRowsModified()) throw new Error("Active session not found");
+    });
+  }
+  async revokeUserSessions(userId: string, exceptSessionId?: string) {
+    const now = new Date().toISOString();
+    await this.persistence.transaction((db) => {
+      if (exceptSessionId)
+        db.run(
+          "UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND id<>? AND revoked_at IS NULL",
+          [now, userId, exceptSessionId],
+        );
+      else
+        db.run(
+          "UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+          [now, userId],
+        );
+    });
+  }
+
+  async login(username: string, password: string, r: IncomingMessage) {
+    const row = this.find(username);
+    if (
+      !row ||
+      Number(row[4]) !== 1 ||
+      !verifyPassword(password, String(row[2]))
+    )
+      throw new Error("Invalid username or password");
+    const token = randomBytes(32).toString("base64url"),
+      hash = scryptSync(token, "syco23-session", 32).toString("hex"),
+      csrf = randomBytes(24).toString("base64url"),
+      now = new Date(),
+      exp = new Date(now.getTime() + this.ttlMs),
+      id = crypto.randomUUID();
+    await this.persistence.transaction((db) => {
+      db.run(
+        "INSERT INTO user_sessions (id,user_id,token_hash,csrf_token,created_at,expires_at,last_seen_at,revoked_at,ip_address,user_agent) VALUES (?,?,?,?,?,?,?,NULL,?,?)",
+        [
+          id,
+          String(row[0]),
+          hash,
+          csrf,
+          now.toISOString(),
+          exp.toISOString(),
+          now.toISOString(),
+          String(r.socket.remoteAddress || ""),
+          String(r.headers["user-agent"] || "").slice(0, 500),
+        ],
+      );
+      db.run("UPDATE users SET last_login_at=?,updated_at=? WHERE id=?", [
+        now.toISOString(),
+        now.toISOString(),
+        String(row[0]),
+      ]);
+    });
+    return {
+      identity: {
+        actor: String(row[1]),
+        role: row[3] as Role,
+        userId: String(row[0]),
+        sessionId: id,
+        csrfToken: csrf,
+      },
+      token,
+      expiresAt: exp.toISOString(),
+    };
+  }
+  authenticate(r: IncomingMessage): AuthIdentity | null {
+    const token = cookies(r).syco_session;
+    if (!token) return null;
+    const hash = scryptSync(token, "syco23-session", 32).toString("hex"),
+      now = new Date().toISOString(),
+      row = rows(
+        this.persistence.database,
+        "SELECT s.id,u.id,u.username,u.role,s.csrf_token,s.expires_at FROM user_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND u.enabled=1",
+        [hash],
+      )[0];
+    if (!row || String(row[5]) <= now) return null;
+    this.persistence.database.run(
+      "UPDATE user_sessions SET last_seen_at=? WHERE id=?",
+      [now, String(row[0])],
+    );
+    return {
+      actor: String(row[2]),
+      role: row[3] as Role,
+      userId: String(row[1]),
+      sessionId: String(row[0]),
+      csrfToken: String(row[4]),
+    };
+  }
+  assertCsrf(r: IncomingMessage, i: AuthIdentity) {
+    if (
+      i.sessionId &&
+      r.method &&
+      !["GET", "HEAD", "OPTIONS"].includes(r.method) &&
+      r.headers["x-csrf-token"] !== i.csrfToken
+    )
+      throw new Error("Invalid CSRF token");
+  }
+  async logout(i: AuthIdentity) {
+    if (i.sessionId)
+      await this.persistence.transaction((db) =>
+        db.run("UPDATE user_sessions SET revoked_at=? WHERE id=?", [
+          new Date().toISOString(),
+          i.sessionId,
+        ]),
+      );
+  }
+  setSessionCookie(res: ServerResponse, token: string, maxAge: number) {
+    res.setHeader(
+      "set-cookie",
+      `syco_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}; ${process.env.NODE_ENV === "production" ? "Secure; " : ""}`,
+    );
+  }
+  clearSessionCookie(res: ServerResponse) {
+    res.setHeader(
+      "set-cookie",
+      "syco_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0",
+    );
+  }
+  async prune() {
+    await this.persistence.transaction((db) =>
+      db.run(
+        "DELETE FROM user_sessions WHERE expires_at<? OR revoked_at IS NOT NULL",
+        [new Date().toISOString()],
+      ),
+    );
+  }
 }

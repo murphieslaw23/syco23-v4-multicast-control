@@ -4,7 +4,14 @@ import {
   type ServerResponse,
 } from "node:http";
 import { createReadStream, existsSync } from "node:fs";
-import { access, mkdir, readFile, readdir, stat, unlink } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  readFile,
+  readdir,
+  stat,
+  unlink,
+} from "node:fs/promises";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { WebSocketServer } from "ws";
 import { PersistentDatabase } from "./persistent-db";
@@ -22,7 +29,12 @@ import { WatchdogRuntime } from "./runtime/watchdog-runtime";
 import { MetadataRuntime } from "./runtime/metadata-runtime";
 import { HlsPreviewRuntime } from "./runtime/hls-preview-runtime";
 import { PreviewTicketStore } from "./runtime/preview-tickets";
-import type { DestinationState, OutputProfile, SceneGraph, Template } from "../types";
+import type {
+  DestinationState,
+  OutputProfile,
+  SceneGraph,
+  Template,
+} from "../types";
 import { AssetStore, renderSceneSvg } from "./scene/scene-runtime";
 import { listProviderAdapters } from "./provider-registry";
 import { queryLogs, logsToCsv } from "./dao/logs";
@@ -76,15 +88,33 @@ const preview = new HlsPreviewRuntime(events, {
   segmentSeconds: Number(process.env.SYCO_PREVIEW_SEGMENT_SECONDS || 2),
   listSize: Number(process.env.SYCO_PREVIEW_LIST_SIZE || 6),
 });
-const assets = new AssetStore(persistence, process.env.SYCO_ASSET_DIR || join(process.cwd(), "data/assets"));
-const providerMonitor = new ProviderMonitorRuntime(persistence, events, secretStore, () => service.listDestinations());
-const telemetry = new SystemTelemetry(resolve(process.env.SYCO_DATA_DIR || join(process.cwd(), "data")));
+const assets = new AssetStore(
+  persistence,
+  process.env.SYCO_ASSET_DIR || join(process.cwd(), "data/assets"),
+);
+const providerMonitor = new ProviderMonitorRuntime(
+  persistence,
+  events,
+  secretStore,
+  () => service.listDestinations(),
+);
+const telemetry = new SystemTelemetry(
+  resolve(process.env.SYCO_DATA_DIR || join(process.cwd(), "data")),
+);
 const backupRoot = resolve(
   process.env.SYCO_BACKUP_DIR || join(process.cwd(), "data/backups"),
 );
-const idempotency = new IdempotencyStore(Number(process.env.SYCO_IDEMPOTENCY_TTL_MS || 300000));
-const authService=new AuthService(persistence,Number(process.env.SYCO_SESSION_TTL_MS||28800000));
-const rateLimiter=new RateLimiter(Number(process.env.SYCO_RATE_LIMIT_CAPACITY||120),Number(process.env.SYCO_RATE_LIMIT_REFILL_PER_SECOND||2));
+const idempotency = new IdempotencyStore(
+  Number(process.env.SYCO_IDEMPOTENCY_TTL_MS || 300000),
+);
+const authService = new AuthService(
+  persistence,
+  Number(process.env.SYCO_SESSION_TTL_MS || 28800000),
+);
+const rateLimiter = new RateLimiter(
+  Number(process.env.SYCO_RATE_LIMIT_CAPACITY || 120),
+  Number(process.env.SYCO_RATE_LIMIT_REFILL_PER_SECOND || 2),
+);
 const retention = new RetentionRuntime(persistence, events, {
   intervalMs: Number(process.env.SYCO_RETENTION_INTERVAL_MS || 3600000),
   logsDays: Number(process.env.SYCO_RETENTION_LOG_DAYS || 30),
@@ -92,13 +122,20 @@ const retention = new RetentionRuntime(persistence, events, {
   incidentsDays: Number(process.env.SYCO_RETENTION_INCIDENT_DAYS || 180),
   metadataDays: Number(process.env.SYCO_RETENTION_METADATA_DAYS || 30),
   workerEventsDays: Number(process.env.SYCO_RETENTION_WORKER_EVENT_DAYS || 30),
-  providerEventsDays: Number(process.env.SYCO_RETENTION_PROVIDER_EVENT_DAYS || 30),
-  watchdogEventsDays: Number(process.env.SYCO_RETENTION_WATCHDOG_EVENT_DAYS || 90),
+  providerEventsDays: Number(
+    process.env.SYCO_RETENTION_PROVIDER_EVENT_DAYS || 30,
+  ),
+  watchdogEventsDays: Number(
+    process.env.SYCO_RETENTION_WATCHDOG_EVENT_DAYS || 90,
+  ),
 });
 
 interface AuthContext {
   actor: string;
   role: Role;
+  userId?: string;
+  sessionId?: string;
+  csrfToken?: string;
 }
 const rank: Record<Role, number> = { viewer: 0, operator: 1, admin: 2 };
 
@@ -135,10 +172,25 @@ async function body(
 }
 
 function auth(request: IncomingMessage): AuthContext | null {
-  const session=authService.authenticate(request); if(session)return session;
-  const header=request.headers.authorization||"", supplied=header.startsWith("Bearer ")?header.slice(7):"";
-  const configured:Array<[string|undefined,AuthContext]>=[[process.env.SYCO_ADMIN_TOKEN||process.env.SYCO_API_TOKEN,{actor:"api-admin",role:"admin"}],[process.env.SYCO_OPERATOR_TOKEN,{actor:"api-operator",role:"operator"}],[process.env.SYCO_VIEWER_TOKEN,{actor:"api-viewer",role:"viewer"}]];
-  const active=configured.filter(([token])=>Boolean(token)); if(!active.length&&!process.env.SYCO_BOOTSTRAP_ADMIN_USER)return{actor:"local-dev",role:"admin"}; return active.find(([token])=>token===supplied)?.[1]??null;
+  const session = authService.authenticate(request);
+  if (session) return session;
+  const header = request.headers.authorization || "",
+    supplied = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const configured: Array<[string | undefined, AuthContext]> = [
+    [
+      process.env.SYCO_ADMIN_TOKEN || process.env.SYCO_API_TOKEN,
+      { actor: "api-admin", role: "admin" },
+    ],
+    [
+      process.env.SYCO_OPERATOR_TOKEN,
+      { actor: "api-operator", role: "operator" },
+    ],
+    [process.env.SYCO_VIEWER_TOKEN, { actor: "api-viewer", role: "viewer" }],
+  ];
+  const active = configured.filter(([token]) => Boolean(token));
+  if (!active.length && !process.env.SYCO_BOOTSTRAP_ADMIN_USER)
+    return { actor: "local-dev", role: "admin" };
+  return active.find(([token]) => token === supplied)?.[1] ?? null;
 }
 
 function requireRole(context: AuthContext, role: Role): void {
@@ -234,21 +286,50 @@ async function route(
     `http://${request.headers.host || "localhost"}`,
   );
   if (!url.pathname.startsWith("/api/")) return serveStatic(request, response);
-  const previewAssetMatch = url.pathname.match(/^\/api\/preview\/(index\.m3u8|segment-\d+\.ts)$/);
+  const previewAssetMatch = url.pathname.match(
+    /^\/api\/preview\/(index\.m3u8|segment-\d+\.ts)$/,
+  );
   if (request.method === "GET" && previewAssetMatch) {
     const ticket = url.searchParams.get("ticket");
     if (!previewTickets.validate(ticket)) {
-      return json(response, 401, { ok: false, error: { code: "PREVIEW_TICKET_INVALID", message: "Preview ticket is invalid or expired", requestId } }, requestId);
+      return json(
+        response,
+        401,
+        {
+          ok: false,
+          error: {
+            code: "PREVIEW_TICKET_INVALID",
+            message: "Preview ticket is invalid or expired",
+            requestId,
+          },
+        },
+        requestId,
+      );
     }
     const name = previewAssetMatch[1];
     const path = join(preview.rootDir, name);
     if (!existsSync(path)) {
-      return json(response, 404, { ok: false, error: { code: "PREVIEW_ASSET_NOT_READY", message: "Preview asset is not available", requestId } }, requestId);
+      return json(
+        response,
+        404,
+        {
+          ok: false,
+          error: {
+            code: "PREVIEW_ASSET_NOT_READY",
+            message: "Preview asset is not available",
+            requestId,
+          },
+        },
+        requestId,
+      );
     }
     if (name === "index.m3u8") {
       const playlist = await readFile(path, "utf8");
       const encodedTicket = encodeURIComponent(ticket || "");
-      const rewritten = playlist.replace(/^(segment-\d+\.ts)$/gm, `$1?ticket=${encodedTicket}`);
+      const rewritten = playlist.replace(
+        /^(segment-\d+\.ts)$/gm,
+        `$1?ticket=${encodedTicket}`,
+      );
       response.writeHead(200, {
         "content-type": "application/vnd.apple.mpegurl",
         "cache-control": "no-store, no-cache, must-revalidate",
@@ -266,10 +347,85 @@ async function route(
     createReadStream(path).pipe(response);
     return;
   }
-  const clientKey=String(request.headers["x-forwarded-for"]||request.socket.remoteAddress||"unknown").split(",")[0].trim();
-  const rate=rateLimiter.consume(`${clientKey}:${url.pathname==="/api/auth/login"?"login":"api"}`,url.pathname==="/api/auth/login"?10:1); response.setHeader("x-ratelimit-remaining",String(rate.remaining));
-  if(!rate.allowed){response.setHeader("retry-after",String(rate.retryAfterSeconds));return json(response,429,{ok:false,error:{code:"RATE_LIMITED",message:"Too many requests",requestId}},requestId)}
-  if(request.method==="POST"&&url.pathname==="/api/auth/login"){try{const input=await body(request) as {username?:string;password?:string};const result=await authService.login(input.username||"",input.password||"",request);authService.setSessionCookie(response,result.token,Math.max(1,Math.floor((new Date(result.expiresAt).getTime()-Date.now())/1000)));return json(response,200,{ok:true,data:{actor:result.identity.actor,role:result.identity.role,csrfToken:result.identity.csrfToken,expiresAt:result.expiresAt}},requestId)}catch{return json(response,401,{ok:false,error:{code:"INVALID_CREDENTIALS",message:"Invalid username or password",requestId}},requestId)}}
+  const clientKey = String(
+    request.headers["x-forwarded-for"] ||
+      request.socket.remoteAddress ||
+      "unknown",
+  )
+    .split(",")[0]
+    .trim();
+  const rate = rateLimiter.consume(
+    `${clientKey}:${url.pathname === "/api/auth/login" ? "login" : "api"}`,
+    url.pathname === "/api/auth/login" ? 10 : 1,
+  );
+  response.setHeader("x-ratelimit-remaining", String(rate.remaining));
+  if (!rate.allowed) {
+    response.setHeader("retry-after", String(rate.retryAfterSeconds));
+    return json(
+      response,
+      429,
+      {
+        ok: false,
+        error: {
+          code: "RATE_LIMITED",
+          message: "Too many requests",
+          requestId,
+        },
+      },
+      requestId,
+    );
+  }
+  if (request.method === "POST" && url.pathname === "/api/auth/login") {
+    try {
+      const input = (await body(request)) as {
+        username?: string;
+        password?: string;
+      };
+      const result = await authService.login(
+        input.username || "",
+        input.password || "",
+        request,
+      );
+      authService.setSessionCookie(
+        response,
+        result.token,
+        Math.max(
+          1,
+          Math.floor(
+            (new Date(result.expiresAt).getTime() - Date.now()) / 1000,
+          ),
+        ),
+      );
+      return json(
+        response,
+        200,
+        {
+          ok: true,
+          data: {
+            actor: result.identity.actor,
+            role: result.identity.role,
+            csrfToken: result.identity.csrfToken,
+            expiresAt: result.expiresAt,
+          },
+        },
+        requestId,
+      );
+    } catch {
+      return json(
+        response,
+        401,
+        {
+          ok: false,
+          error: {
+            code: "INVALID_CREDENTIALS",
+            message: "Invalid username or password",
+            requestId,
+          },
+        },
+        requestId,
+      );
+    }
+  }
   if (request.method === "GET" && url.pathname === "/api/health")
     return json(
       response,
@@ -286,21 +442,67 @@ async function route(
     );
   if (request.method === "GET" && url.pathname === "/api/health/ready") {
     const checks: Record<string, { ok: boolean; detail?: string }> = {};
-    try { persistence.database.exec("SELECT 1"); checks.database = { ok: true }; }
-    catch (error) { checks.database = { ok: false, detail: error instanceof Error ? error.message : String(error) }; }
-    try { await mkdir(dirname(resolve(process.env.SYCO_DB_PATH || join(process.cwd(), "data/syco23.sqlite"))), { recursive: true }); checks.dataDirectory = { ok: true }; }
-    catch (error) { checks.dataDirectory = { ok: false, detail: error instanceof Error ? error.message : String(error) }; }
-    try { await mkdir(backupRoot, { recursive: true }); await access(backupRoot); checks.backupDirectory = { ok: true }; }
-    catch (error) { checks.backupDirectory = { ok: false, detail: error instanceof Error ? error.message : String(error) }; }
+    try {
+      persistence.database.exec("SELECT 1");
+      checks.database = { ok: true };
+    } catch (error) {
+      checks.database = {
+        ok: false,
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+    try {
+      await mkdir(
+        dirname(
+          resolve(
+            process.env.SYCO_DB_PATH ||
+              join(process.cwd(), "data/syco23.sqlite"),
+          ),
+        ),
+        { recursive: true },
+      );
+      checks.dataDirectory = { ok: true };
+    } catch (error) {
+      checks.dataDirectory = {
+        ok: false,
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+    try {
+      await mkdir(backupRoot, { recursive: true });
+      await access(backupRoot);
+      checks.backupDirectory = { ok: true };
+    } catch (error) {
+      checks.backupDirectory = {
+        ok: false,
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
     const ffmpegPath = process.env.SYCO_FFMPEG_PATH || "ffmpeg";
     checks.ffmpeg = { ok: Boolean(ffmpegPath), detail: ffmpegPath };
     checks.scheduler = { ok: true };
     checks.watchdog = { ok: watchdog.snapshot().running };
-    checks.metadata = { ok: metadata.snapshot().health.status !== "failed", detail: metadata.snapshot().health.status };
+    checks.metadata = {
+      ok: metadata.snapshot().health.status !== "failed",
+      detail: metadata.snapshot().health.status,
+    };
     const ready = Object.values(checks).every((check) => check.ok);
-    return json(response, ready ? 200 : 503, ready
-      ? { ok: true, data: { ready, checks } }
-      : { ok: false, error: { code: "NOT_READY", message: "One or more dependencies are not ready", detail: checks, requestId } }, requestId);
+    return json(
+      response,
+      ready ? 200 : 503,
+      ready
+        ? { ok: true, data: { ready, checks } }
+        : {
+            ok: false,
+            error: {
+              code: "NOT_READY",
+              message: "One or more dependencies are not ready",
+              detail: checks,
+              requestId,
+            },
+          },
+      requestId,
+    );
   }
   const context = auth(request);
   if (!context)
@@ -314,11 +516,122 @@ async function route(
       requestId,
     );
   try {
-    authService.assertCsrf(request,context);
-    if(request.method==="POST"&&url.pathname==="/api/auth/logout"){await authService.logout(context);authService.clearSessionCookie(response);return json(response,204,null,requestId)}
-    if(request.method==="GET"&&url.pathname==="/api/users"){requireRole(context,"admin");return json(response,200,{ok:true,data:authService.listUsers()},requestId)}
-    if(request.method==="POST"&&url.pathname==="/api/users"){requireRole(context,"admin");const input=await body(request) as {username?:string;password?:string;role?:Role};const data=await audited(context,"create","user",null,()=>authService.createUser(input.username||"",input.password||"",input.role||"viewer"));return json(response,201,{ok:true,data},requestId)}
-    const revisionMatch=url.pathname.match(/^\/api\/revisions\/([^/]+)\/([^/]+)$/);if(request.method==="GET"&&revisionMatch){requireRole(context,"admin");return json(response,200,{ok:true,data:operations.listRevisions(decodeURIComponent(revisionMatch[1]),decodeURIComponent(revisionMatch[2]))},requestId)}
+    authService.assertCsrf(request, context);
+    if (request.method === "POST" && url.pathname === "/api/auth/logout") {
+      await authService.logout(context);
+      authService.clearSessionCookie(response);
+      return json(response, 204, null, requestId);
+    }
+    if (request.method === "GET" && url.pathname === "/api/users") {
+      requireRole(context, "admin");
+      return json(
+        response,
+        200,
+        { ok: true, data: authService.listUsers() },
+        requestId,
+      );
+    }
+    if (request.method === "POST" && url.pathname === "/api/users") {
+      requireRole(context, "admin");
+      const input = (await body(request)) as {
+        username?: string;
+        password?: string;
+        role?: Role;
+      };
+      const data = await audited(context, "create", "user", null, () =>
+        authService.createUser(
+          input.username || "",
+          input.password || "",
+          input.role || "viewer",
+        ),
+      );
+      return json(response, 201, { ok: true, data }, requestId);
+    }
+    const userMatch = url.pathname.match(/^\/api\/users\/([^/]+)$/);
+    if (userMatch && request.method === "PATCH") {
+      requireRole(context, "admin");
+      const id = decodeURIComponent(userMatch[1]);
+      const input = (await body(request)) as { role?: Role; enabled?: boolean };
+      if (context.userId === id && input.enabled === false)
+        throw new ApiError(
+          "SELF_DISABLE_FORBIDDEN",
+          "You cannot disable your own account",
+          409,
+        );
+      const data = await audited(context, "update", "user", id, () =>
+        authService.updateUser(id, input),
+      );
+      return json(response, 200, { ok: true, data }, requestId);
+    }
+    const passwordMatch = url.pathname.match(
+      /^\/api\/users\/([^/]+)\/password$/,
+    );
+    if (passwordMatch && request.method === "POST") {
+      requireRole(context, "admin");
+      const id = decodeURIComponent(passwordMatch[1]);
+      const input = (await body(request)) as { password?: string };
+      await audited(context, "reset-password", "user", id, () =>
+        authService.resetPassword(id, input.password || ""),
+      );
+      return json(response, 204, null, requestId);
+    }
+    if (request.method === "GET" && url.pathname === "/api/sessions") {
+      requireRole(context, "admin");
+      const userId = url.searchParams.get("userId") || undefined;
+      return json(
+        response,
+        200,
+        { ok: true, data: authService.listSessions(context.sessionId, userId) },
+        requestId,
+      );
+    }
+    const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)$/);
+    if (sessionMatch && request.method === "DELETE") {
+      requireRole(context, "admin");
+      const id = decodeURIComponent(sessionMatch[1]);
+      if (context.sessionId === id)
+        throw new ApiError(
+          "CURRENT_SESSION_REVOKE_FORBIDDEN",
+          "Use logout to end the current session",
+          409,
+        );
+      await audited(context, "revoke", "session", id, () =>
+        authService.revokeSession(id),
+      );
+      return json(response, 204, null, requestId);
+    }
+    const userSessionsMatch = url.pathname.match(
+      /^\/api\/users\/([^/]+)\/sessions\/revoke$/,
+    );
+    if (userSessionsMatch && request.method === "POST") {
+      requireRole(context, "admin");
+      const id = decodeURIComponent(userSessionsMatch[1]);
+      await audited(context, "revoke-sessions", "user", id, () =>
+        authService.revokeUserSessions(
+          id,
+          context.userId === id ? context.sessionId : undefined,
+        ),
+      );
+      return json(response, 204, null, requestId);
+    }
+    const revisionMatch = url.pathname.match(
+      /^\/api\/revisions\/([^/]+)\/([^/]+)$/,
+    );
+    if (request.method === "GET" && revisionMatch) {
+      requireRole(context, "admin");
+      return json(
+        response,
+        200,
+        {
+          ok: true,
+          data: operations.listRevisions(
+            decodeURIComponent(revisionMatch[1]),
+            decodeURIComponent(revisionMatch[2]),
+          ),
+        },
+        requestId,
+      );
+    }
     if (request.method === "GET" && url.pathname === "/api/me")
       return json(response, 200, { ok: true, data: context });
     if (request.method === "POST" && url.pathname === "/api/events/ticket")
@@ -336,46 +649,131 @@ async function route(
         requestId,
       );
     if (request.method === "GET" && url.pathname === "/api/preview/status")
-      return json(response, 200, { ok: true, data: preview.snapshot() }, requestId);
+      return json(
+        response,
+        200,
+        { ok: true, data: preview.snapshot() },
+        requestId,
+      );
     if (request.method === "GET" && url.pathname === "/api/templates")
-      return json(response, 200, { ok: true, data: service.listTemplates() }, requestId);
+      return json(
+        response,
+        200,
+        { ok: true, data: service.listTemplates() },
+        requestId,
+      );
     if (request.method === "POST" && url.pathname === "/api/templates") {
       requireRole(context, "admin");
-      const input = await body(request) as { name:string; provider:Template["provider"]; scene:SceneGraph; isCustom?:boolean };
-      const data = await audited(context, "create", "template", null, () => service.createTemplate(input));
-      await operations.recordRevision(context.actor,"template",data.id,data);
-      return json(response, 201, { ok:true, data }, requestId);
+      const input = (await body(request)) as {
+        name: string;
+        provider: Template["provider"];
+        scene: SceneGraph;
+        isCustom?: boolean;
+      };
+      const data = await audited(context, "create", "template", null, () =>
+        service.createTemplate(input),
+      );
+      await operations.recordRevision(context.actor, "template", data.id, data);
+      return json(response, 201, { ok: true, data }, requestId);
     }
     const templateMatch = url.pathname.match(/^\/api\/templates\/([^/]+)$/);
     if (templateMatch && request.method === "PATCH") {
-      requireRole(context, "admin"); const id=decodeURIComponent(templateMatch[1]);
-      const patch=await body(request) as Partial<Pick<Template,"name"|"provider"|"scene">>;
-      const current=service.getTemplate(id),expected=String(request.headers["if-match"]||"").replace(/\D/g,"");if(expected&&Number(expected)!==Number(current.version||1))throw new ApiError("REVISION_CONFLICT","Template revision does not match",409);
-      const data=await audited(context,"update","template",id,()=>service.patchTemplate(id,patch));await operations.recordRevision(context.actor,"template",id,data);response.setHeader("etag",`"${data.version||1}"`);
-      return json(response,200,{ok:true,data},requestId);
+      requireRole(context, "admin");
+      const id = decodeURIComponent(templateMatch[1]);
+      const patch = (await body(request)) as Partial<
+        Pick<Template, "name" | "provider" | "scene">
+      >;
+      const current = service.getTemplate(id),
+        expected = String(request.headers["if-match"] || "").replace(/\D/g, "");
+      if (expected && Number(expected) !== Number(current.version || 1))
+        throw new ApiError(
+          "REVISION_CONFLICT",
+          "Template revision does not match",
+          409,
+        );
+      const data = await audited(context, "update", "template", id, () =>
+        service.patchTemplate(id, patch),
+      );
+      await operations.recordRevision(context.actor, "template", id, data);
+      response.setHeader("etag", `"${data.version || 1}"`);
+      return json(response, 200, { ok: true, data }, requestId);
     }
     if (templateMatch && request.method === "DELETE") {
-      requireRole(context,"admin"); const id=decodeURIComponent(templateMatch[1]);
-      await audited(context,"delete","template",id,()=>service.removeTemplate(id));
-      return json(response,204,null,requestId);
+      requireRole(context, "admin");
+      const id = decodeURIComponent(templateMatch[1]);
+      await audited(context, "delete", "template", id, () =>
+        service.removeTemplate(id),
+      );
+      return json(response, 204, null, requestId);
     }
-    const previewMatch=url.pathname.match(/^\/api\/templates\/([^/]+)\/preview\.svg$/);
-    if(previewMatch && request.method === "GET") {
-      const template=service.getTemplate(decodeURIComponent(previewMatch[1]));
-      const svg=renderSceneSvg(template.scene || {width:1920,height:1080,background:"#000000",layers:[]},{ title:metadata.snapshot().metadata?.title, artist:metadata.snapshot().metadata?.artist, show:metadata.snapshot().metadata?.show ?? undefined, listeners:metadata.snapshot().metadata?.listeners ?? undefined });
-      response.writeHead(200,{"content-type":"image/svg+xml; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","x-request-id":requestId}); response.end(svg); return;
+    const previewMatch = url.pathname.match(
+      /^\/api\/templates\/([^/]+)\/preview\.svg$/,
+    );
+    if (previewMatch && request.method === "GET") {
+      const template = service.getTemplate(decodeURIComponent(previewMatch[1]));
+      const svg = renderSceneSvg(
+        template.scene || {
+          width: 1920,
+          height: 1080,
+          background: "#000000",
+          layers: [],
+        },
+        {
+          title: metadata.snapshot().metadata?.title,
+          artist: metadata.snapshot().metadata?.artist,
+          show: metadata.snapshot().metadata?.show ?? undefined,
+          listeners: metadata.snapshot().metadata?.listeners ?? undefined,
+        },
+      );
+      response.writeHead(200, {
+        "content-type": "image/svg+xml; charset=utf-8",
+        "cache-control": "no-store",
+        "x-content-type-options": "nosniff",
+        "x-request-id": requestId,
+      });
+      response.end(svg);
+      return;
     }
-    if(request.method === "GET" && url.pathname === "/api/assets") return json(response,200,{ok:true,data:assets.list()},requestId);
-    if(request.method === "POST" && url.pathname === "/api/assets") {
-      requireRole(context,"admin"); const input=await body(request,14_000_000) as {filename:string;mimeType:string;base64:string};
-      const created=await audited(context,"create","asset",null,()=>assets.create(input));
-      return json(response,201,{ok:true,data:{...created,storagePath:undefined}},requestId);
+    if (request.method === "GET" && url.pathname === "/api/assets")
+      return json(response, 200, { ok: true, data: assets.list() }, requestId);
+    if (request.method === "POST" && url.pathname === "/api/assets") {
+      requireRole(context, "admin");
+      const input = (await body(request, 14_000_000)) as {
+        filename: string;
+        mimeType: string;
+        base64: string;
+      };
+      const created = await audited(context, "create", "asset", null, () =>
+        assets.create(input),
+      );
+      return json(
+        response,
+        201,
+        { ok: true, data: { ...created, storagePath: undefined } },
+        requestId,
+      );
     }
-    const assetMatch=url.pathname.match(/^\/api\/assets\/([^/]+)$/);
-    if(assetMatch && request.method === "GET") {
-      const {asset,bytes}=await assets.bytes(decodeURIComponent(assetMatch[1])); response.writeHead(200,{"content-type":asset.mimeType,"content-length":String(bytes.length),"cache-control":"private, max-age=3600","x-content-type-options":"nosniff","x-request-id":requestId}); response.end(bytes); return;
+    const assetMatch = url.pathname.match(/^\/api\/assets\/([^/]+)$/);
+    if (assetMatch && request.method === "GET") {
+      const { asset, bytes } = await assets.bytes(
+        decodeURIComponent(assetMatch[1]),
+      );
+      response.writeHead(200, {
+        "content-type": asset.mimeType,
+        "content-length": String(bytes.length),
+        "cache-control": "private, max-age=3600",
+        "x-content-type-options": "nosniff",
+        "x-request-id": requestId,
+      });
+      response.end(bytes);
+      return;
     }
-    if(assetMatch && request.method === "DELETE") { requireRole(context,"admin"); const id=decodeURIComponent(assetMatch[1]); await audited(context,"delete","asset",id,()=>assets.remove(id)); return json(response,204,null,requestId); }
+    if (assetMatch && request.method === "DELETE") {
+      requireRole(context, "admin");
+      const id = decodeURIComponent(assetMatch[1]);
+      await audited(context, "delete", "asset", id, () => assets.remove(id));
+      return json(response, 204, null, requestId);
+    }
     if (request.method === "GET" && url.pathname === "/api/metadata")
       return json(
         response,
@@ -407,45 +805,108 @@ async function route(
       );
     }
     if (request.method === "GET" && url.pathname === "/api/status")
-      return json(response, 200, {
-        ok: true,
-        data: { ...service.status(), watchdog: watchdog.snapshot(), system: await telemetry.snapshot() },
-      }, requestId);
+      return json(
+        response,
+        200,
+        {
+          ok: true,
+          data: {
+            ...service.status(),
+            watchdog: watchdog.snapshot(),
+            system: await telemetry.snapshot(),
+          },
+        },
+        requestId,
+      );
     if (request.method === "GET" && url.pathname === "/api/system/metrics")
-      return json(response, 200, { ok: true, data: await telemetry.snapshot() }, requestId);
+      return json(
+        response,
+        200,
+        { ok: true, data: await telemetry.snapshot() },
+        requestId,
+      );
     if (request.method === "GET" && url.pathname === "/api/provider-monitor") {
       requireRole(context, "viewer");
-      return json(response, 200, { ok: true, data: providerMonitor.list() }, requestId);
+      return json(
+        response,
+        200,
+        { ok: true, data: providerMonitor.list() },
+        requestId,
+      );
     }
-    if (request.method === "POST" && url.pathname === "/api/provider-monitor/probe") {
+    if (
+      request.method === "POST" &&
+      url.pathname === "/api/provider-monitor/probe"
+    ) {
       requireRole(context, "operator");
-      const payload = await body(request) as { destinationId?: string };
+      const payload = (await body(request)) as { destinationId?: string };
       const data = await providerMonitor.probeNow(payload.destinationId);
       return json(response, 200, { ok: true, data }, requestId);
     }
-    const providerEventsMatch = url.pathname.match(/^\/api\/provider-monitor\/([^/]+)\/events$/);
+    const providerEventsMatch = url.pathname.match(
+      /^\/api\/provider-monitor\/([^/]+)\/events$/,
+    );
     if (request.method === "GET" && providerEventsMatch) {
       requireRole(context, "viewer");
       const id = decodeURIComponent(providerEventsMatch[1]);
-      const rows = persistence.database.exec('SELECT id,destination_id,timestamp,event_type,state,message,detail FROM provider_monitor_events WHERE destination_id=? ORDER BY timestamp DESC LIMIT 200', [id]);
-      const data = rows[0]?.values.map(row => ({ id:String(row[0]), destinationId:String(row[1]), timestamp:String(row[2]), eventType:String(row[3]), state:String(row[4]), message:row[5] == null ? null : String(row[5]), detail:JSON.parse(String(row[6] || '{}')) })) || [];
+      const rows = persistence.database.exec(
+        "SELECT id,destination_id,timestamp,event_type,state,message,detail FROM provider_monitor_events WHERE destination_id=? ORDER BY timestamp DESC LIMIT 200",
+        [id],
+      );
+      const data =
+        rows[0]?.values.map((row) => ({
+          id: String(row[0]),
+          destinationId: String(row[1]),
+          timestamp: String(row[2]),
+          eventType: String(row[3]),
+          state: String(row[4]),
+          message: row[5] == null ? null : String(row[5]),
+          detail: JSON.parse(String(row[6] || "{}")),
+        })) || [];
       return json(response, 200, { ok: true, data }, requestId);
     }
     if (request.method === "GET" && url.pathname === "/api/retention") {
       requireRole(context, "admin");
-      return json(response, 200, { ok: true, data: {
-        intervalMs: Number(process.env.SYCO_RETENTION_INTERVAL_MS || 3600000),
-        logDays: Number(process.env.SYCO_RETENTION_LOG_DAYS || 30),
-        auditDays: Number(process.env.SYCO_RETENTION_AUDIT_DAYS || 365),
-      } }, requestId);
+      return json(
+        response,
+        200,
+        {
+          ok: true,
+          data: {
+            intervalMs: Number(
+              process.env.SYCO_RETENTION_INTERVAL_MS || 3600000,
+            ),
+            logDays: Number(process.env.SYCO_RETENTION_LOG_DAYS || 30),
+            auditDays: Number(process.env.SYCO_RETENTION_AUDIT_DAYS || 365),
+          },
+        },
+        requestId,
+      );
     }
     if (request.method === "POST" && url.pathname === "/api/retention/run") {
       requireRole(context, "admin");
-      const data = await audited(context, "run", "retention", null, () => retention.run());
+      const data = await audited(context, "run", "retention", null, () =>
+        retention.run(),
+      );
       return json(response, 200, { ok: true, data }, requestId);
     }
     if (request.method === "GET" && url.pathname === "/api/providers")
-      return json(response, 200, { ok: true, data: listProviderAdapters().map(({ id, label, capabilities, profilePolicy }) => ({ id, label, capabilities, profilePolicy })) }, requestId);
+      return json(
+        response,
+        200,
+        {
+          ok: true,
+          data: listProviderAdapters().map(
+            ({ id, label, capabilities, profilePolicy }) => ({
+              id,
+              label,
+              capabilities,
+              profilePolicy,
+            }),
+          ),
+        },
+        requestId,
+      );
     if (request.method === "GET" && url.pathname === "/api/destination-workers")
       return json(
         response,
@@ -632,32 +1093,64 @@ async function route(
 
     if (request.method === "POST" && url.pathname === "/api/pipeline/start") {
       requireRole(context, "operator");
-      const key = String(request.headers["idempotency-key"] || "").slice(0, 200);
-      if (key) { const cached = idempotency.get<unknown>("pipeline.start", key); if (cached) return json(response, 202, { ok: true, data: cached }, requestId); }
-      const input = (await body(request)) as { inputUrl: string; destinationIds?: string[]; title?: string; ffmpegPath?: string; templateId?: string };
-      const data = await audited(context, "start", "pipeline", null, async () => {
-        const result = await service.startPipeline(input);
-        try {
-          await preview.start(input.inputUrl);
-        } catch (error) {
-          await service.stopPipeline();
-          throw error;
-        }
-        return result;
-      });
+      const key = String(request.headers["idempotency-key"] || "").slice(
+        0,
+        200,
+      );
+      if (key) {
+        const cached = idempotency.get<unknown>("pipeline.start", key);
+        if (cached)
+          return json(response, 202, { ok: true, data: cached }, requestId);
+      }
+      const input = (await body(request)) as {
+        inputUrl: string;
+        destinationIds?: string[];
+        title?: string;
+        ffmpegPath?: string;
+        templateId?: string;
+      };
+      const data = await audited(
+        context,
+        "start",
+        "pipeline",
+        null,
+        async () => {
+          const result = await service.startPipeline(input);
+          try {
+            await preview.start(input.inputUrl);
+          } catch (error) {
+            await service.stopPipeline();
+            throw error;
+          }
+          return result;
+        },
+      );
       if (key) idempotency.set("pipeline.start", key, data);
       return json(response, 202, { ok: true, data }, requestId);
     }
     if (request.method === "POST" && url.pathname === "/api/pipeline/stop") {
       requireRole(context, "operator");
-      const key = String(request.headers["idempotency-key"] || "").slice(0, 200);
-      if (key) { const cached = idempotency.get<unknown>("pipeline.stop", key); if (cached) return json(response, 200, { ok: true, data: cached }, requestId); }
-      const data = await audited(context, "stop", "pipeline", null, async () => {
-        const result = await service.stopPipeline();
-        await preview.stop();
-        await preview.cleanup();
-        return result;
-      });
+      const key = String(request.headers["idempotency-key"] || "").slice(
+        0,
+        200,
+      );
+      if (key) {
+        const cached = idempotency.get<unknown>("pipeline.stop", key);
+        if (cached)
+          return json(response, 200, { ok: true, data: cached }, requestId);
+      }
+      const data = await audited(
+        context,
+        "stop",
+        "pipeline",
+        null,
+        async () => {
+          const result = await service.stopPipeline();
+          await preview.stop();
+          await preview.cleanup();
+          return result;
+        },
+      );
       if (key) idempotency.set("pipeline.stop", key, data);
       return json(response, 200, { ok: true, data }, requestId);
     }
@@ -839,15 +1332,34 @@ async function main(): Promise<void> {
   metadata.start();
   providerMonitor.start();
   retention.start();
-  events.subscribe((event) => { if (event.type === "metadata.updated") providerMonitor.scheduleMetadataPublish(event.payload as Record<string, unknown>); });
+  events.subscribe((event) => {
+    if (event.type === "metadata.updated")
+      providerMonitor.scheduleMetadataPublish(
+        event.payload as Record<string, unknown>,
+      );
+  });
   const server = createServer((request, response) => {
     const started = process.hrtime.bigint();
     response.once("finish", () => {
       if (!request.url?.startsWith("/api/")) return;
       const durationMs = Number(process.hrtime.bigint() - started) / 1e6;
-      const path = new URL(request.url, `http://${request.headers.host || "localhost"}`).pathname;
-      const level = response.statusCode >= 500 ? "error" : response.statusCode >= 400 ? "warning" : "info";
-      void persistence.transaction((db) => insertLog(db, { level, source: "http", message: `${request.method || "GET"} ${path} ${response.statusCode} ${durationMs.toFixed(1)}ms requestId=${String(response.getHeader("x-request-id") || "")}` }));
+      const path = new URL(
+        request.url,
+        `http://${request.headers.host || "localhost"}`,
+      ).pathname;
+      const level =
+        response.statusCode >= 500
+          ? "error"
+          : response.statusCode >= 400
+            ? "warning"
+            : "info";
+      void persistence.transaction((db) =>
+        insertLog(db, {
+          level,
+          source: "http",
+          message: `${request.method || "GET"} ${path} ${response.statusCode} ${durationMs.toFixed(1)}ms requestId=${String(response.getHeader("x-request-id") || "")}`,
+        }),
+      );
     });
     void route(request, response);
   });
@@ -885,12 +1397,13 @@ async function main(): Promise<void> {
       scheduler.stop();
       watchdog.stop();
       metadata.stop();
-    providerMonitor.stop();
+      providerMonitor.stop();
       retention.stop();
       telemetry.close();
       sockets.close();
-      void Promise.allSettled([service.stopPipeline(), preview.stop()])
-        .finally(() => server.close(() => process.exit(0)));
+      void Promise.allSettled([service.stopPipeline(), preview.stop()]).finally(
+        () => server.close(() => process.exit(0)),
+      );
     });
 }
 
