@@ -17,11 +17,13 @@ export class FfmpegProcessSupervisor {
   private readonly lifecycle = new PipelineSupervisor()
   private metrics: ProcessMetrics = { frame: 0, fps: 0, bitrateKbps: 0, speed: 0, outTimeMs: 0 }
   private stopping = false
+  private startedAt: string | null = null
+  private lastProgressAt: string | null = null
 
   constructor(private readonly events: RuntimeEventBus) {}
 
   snapshot() {
-    return { ...this.lifecycle.getSnapshot(), metrics: { ...this.metrics } }
+    return { ...this.lifecycle.getSnapshot(), metrics: { ...this.metrics }, startedAt: this.startedAt, lastProgressAt: this.lastProgressAt }
   }
 
   start(command: FfmpegCommand): void {
@@ -31,6 +33,8 @@ export class FfmpegProcessSupervisor {
     this.lifecycle.transition('preparing')
     this.lifecycle.transition('starting')
     this.stopping = false
+    this.startedAt = new Date().toISOString()
+    this.lastProgressAt = this.startedAt
 
     const args = [...command.args, '-progress', 'pipe:1', '-nostats']
     const child = spawn(command.executable, args, { stdio: ['ignore', 'pipe', 'pipe'], env: process.env })
@@ -94,7 +98,7 @@ export class FfmpegProcessSupervisor {
     if (key === 'bitrate') this.metrics.bitrateKbps = Number.parseFloat(raw.replace('kbits/s', '')) || 0
     if (key === 'speed') this.metrics.speed = Number.parseFloat(raw.replace('x', '')) || 0
     if (key === 'out_time_ms' && Number.isFinite(number)) this.metrics.outTimeMs = number
-    if (key === 'progress') this.events.publish('pipeline.metrics', { ...this.metrics })
+    if (key === 'progress') { this.lastProgressAt = new Date().toISOString(); this.events.publish('pipeline.metrics', { ...this.metrics }) }
   }
 
   private fail(error: unknown): void {

@@ -10,6 +10,7 @@ import { OperationsStore, type Role, type ScheduleJob } from './runtime/operatio
 import { SchedulerRuntime } from './runtime/scheduler'
 import { ApiError, asApiError } from './runtime/errors'
 import { WebSocketTicketStore } from './runtime/ws-tickets'
+import { WatchdogRuntime } from './runtime/watchdog-runtime'
 import type { DestinationState, OutputProfile } from '../types'
 
 const port = Number(process.env.PORT || 3000)
@@ -21,6 +22,14 @@ const service = new ControlService(persistence, events)
 const operations = new OperationsStore(persistence, events)
 const scheduler = new SchedulerRuntime(operations, service, events)
 const wsTickets = new WebSocketTicketStore()
+const watchdog = new WatchdogRuntime(service, persistence, operations, events, {
+  intervalMs: Number(process.env.SYCO_WATCHDOG_INTERVAL_MS || 2000),
+  startupGraceMs: Number(process.env.SYCO_WATCHDOG_STARTUP_GRACE_MS || 20000),
+  progressTimeoutMs: Number(process.env.SYCO_WATCHDOG_PROGRESS_TIMEOUT_MS || 15000),
+  maxRestarts: Number(process.env.SYCO_WATCHDOG_MAX_RESTARTS || 3),
+  baseBackoffMs: Number(process.env.SYCO_WATCHDOG_BACKOFF_MS || 2000),
+  cooldownMs: Number(process.env.SYCO_WATCHDOG_COOLDOWN_MS || 60000),
+})
 const backupRoot = resolve(process.env.SYCO_BACKUP_DIR || join(process.cwd(), 'data/backups'))
 
 interface AuthContext { actor: string; role: Role }
@@ -100,7 +109,13 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
   try {
     if (request.method === 'GET' && url.pathname === '/api/me') return json(response, 200, { ok: true, data: context })
     if (request.method === 'POST' && url.pathname === '/api/events/ticket') return json(response, 201, { ok: true, data: wsTickets.issue(context) }, requestId)
-    if (request.method === 'GET' && url.pathname === '/api/status') return json(response, 200, { ok: true, data: service.status() })
+    if (request.method === 'GET' && url.pathname === '/api/status') return json(response, 200, { ok: true, data: { ...service.status(), watchdog: watchdog.snapshot() } })
+    if (request.method === 'GET' && url.pathname === '/api/watchdog/events') {
+      const limit = Math.max(1, Math.min(Number(url.searchParams.get('limit') || 100), 500))
+      const result = persistence.database.exec('SELECT id,timestamp,source,severity,message FROM watchdog_events ORDER BY timestamp DESC LIMIT ?', [limit])
+      const data = result[0]?.values.map(row => ({ id:String(row[0]), timestamp:String(row[1]), source:String(row[2]), severity:String(row[3]), message:String(row[4]) })) ?? []
+      return json(response, 200, { ok: true, data })
+    }
     if (request.method === 'GET' && url.pathname === '/api/events') return json(response, 200, { ok: true, data: events.history(Number(url.searchParams.get('limit') || 100)) })
     if (request.method === 'GET' && url.pathname === '/api/logs') return json(response, 200, { ok: true, data: service.logs(Number(url.searchParams.get('limit') || 200)) })
     if (request.method === 'GET' && url.pathname === '/api/sessions') return json(response, 200, { ok: true, data: service.sessions(Number(url.searchParams.get('limit') || 200)) })
@@ -170,6 +185,7 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
 async function main(): Promise<void> {
   await service.initialize()
   scheduler.start()
+  watchdog.start()
   const server = createServer((request, response) => void route(request, response))
   const sockets = new WebSocketServer({ noServer: true })
   server.on('upgrade', (request, socket, head) => {
@@ -185,7 +201,7 @@ async function main(): Promise<void> {
     client.on('close', unsubscribe)
   })
   server.listen(port, host, () => console.log(`SYCO23 control runtime listening on http://${host}:${port}`))
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { scheduler.stop(); void service.stopPipeline().finally(() => server.close(() => process.exit(0))) })
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { scheduler.stop(); watchdog.stop(); void service.stopPipeline().finally(() => server.close(() => process.exit(0))) })
 }
 
 main().catch((error) => { console.error(error); process.exit(1) })

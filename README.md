@@ -368,3 +368,9 @@ POST   /api/backups/restore
 ```
 
 The scheduler executes due jobs once per second and persists completion, retry diagnostics, recurrence, and failures. Failed scheduled actions open incidents automatically. Existing databases using the earlier schedule schema are migrated at startup.
+
+## Runtime watchdog
+
+The control runtime monitors FFmpeg progress rather than process existence alone. A live pipeline that stops emitting progress, exits unexpectedly, or enters a failed state is restarted with exponential backoff. After the configured restart budget is exhausted, destinations enter `cooldown`, the active stream is closed, and a persistent critical incident is opened.
+
+Watchdog state is included in `GET /api/status`; persistent events are available from `GET /api/watchdog/events`.

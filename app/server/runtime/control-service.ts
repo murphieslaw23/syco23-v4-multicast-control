@@ -23,6 +23,9 @@ export interface StartPipelineRequest {
 export class ControlService {
   readonly process: FfmpegProcessSupervisor
   private readonly commandLock = new AsyncCommandLock()
+  private activeRequest: StartPipelineRequest | null = null
+  private activeDestinationIds: string[] = []
+  private eventsBound = false
   constructor(private readonly persistence: PersistentDatabase, readonly events: RuntimeEventBus, private readonly secrets: SecretStore = new EnvironmentSecretStore()) {
     this.process = new FfmpegProcessSupervisor(events)
   }
@@ -35,6 +38,10 @@ export class ControlService {
     store.streams = getAllStreams(this.persistence.database).map(item => ({ id: item.id, title: item.title, startedAt: item.startedAt, stoppedAt: item.endedAt }))
     const logs = this.persistence.database.exec('SELECT id,timestamp,level,source,message FROM log_entries ORDER BY timestamp DESC LIMIT 500')
     store.logs = logs[0]?.values.map((row) => ({ id: String(row[0]), timestamp: String(row[1]), level: row[2] as never, source: String(row[3]), message: String(row[4]) })) ?? []
+    if (!this.eventsBound) {
+      this.eventsBound = true
+      this.events.subscribe((event) => { void this.handleRuntimeEvent(event.type, event.payload) })
+    }
     this.log('info', 'runtime', 'Control service initialized')
   }
 
@@ -95,6 +102,9 @@ export class ControlService {
         if (!streamKeys[destination.streamKeyRef]) streamKeys[destination.streamKeyRef] = await this.secrets.resolve(destination.streamKeyRef)
       }
       const command = buildFfmpegFanoutCommand({ inputUrl: request.inputUrl, destinations: selected, profiles: getRuntimeStore().profiles, streamKeys, ffmpegPath: request.ffmpegPath })
+      this.activeRequest = structuredClone(request)
+      this.activeDestinationIds = selected.map(item => item.id)
+      await this.setDestinationRuntimeState(this.activeDestinationIds, { status: 'connecting', health: 'degraded', lastError: null })
       this.process.start(command)
       const session = { id: createRuntimeId('session'), title: request.title || 'SYCO23 Transmission', startedAt: new Date().toISOString(), stoppedAt: null }
       await this.persistence.transaction(db => db.run('INSERT INTO streams (id,title,artist,started_at,ended_at,status) VALUES (?,?,?,?,?,?)', [session.id, session.title, '', session.startedAt, null, 'online']))
@@ -114,9 +124,67 @@ export class ControlService {
         await this.persistence.transaction(db => updateStream(db, active.id, { endedAt: active.stoppedAt, status: 'offline' }))
       }
       getRuntimeStore().status = { live: false, pipelineHealth: 'ok', ingestStatus: 'idle' }
+      await this.setDestinationRuntimeState(this.activeDestinationIds, { status: 'configured', health: 'ok', lastError: null })
+      this.activeRequest = null
+      this.activeDestinationIds = []
       this.log('info', 'pipeline', 'Pipeline stopped')
       return this.process.snapshot()
     })
+  }
+
+
+  async recoverPipeline(reason: string): Promise<void> {
+    return this.commandLock.run('pipeline.recover', async () => {
+      const request = this.activeRequest ? structuredClone(this.activeRequest) : null
+      if (!request) throw new ApiError('RECOVERY_CONTEXT_MISSING', 'No active pipeline request is available for recovery')
+      await this.process.stop(3000)
+      this.log('warning', 'watchdog', `Restarting pipeline: ${reason}`)
+      const selected = request.destinationIds?.length
+        ? getRuntimeStore().destinations.filter(item => request.destinationIds?.includes(item.id))
+        : getRuntimeStore().destinations
+      const streamKeys: Record<string, string> = { ...(request.streamKeys || {}) }
+      for (const destination of selected) {
+        if (!streamKeys[destination.streamKeyRef]) streamKeys[destination.streamKeyRef] = await this.secrets.resolve(destination.streamKeyRef)
+      }
+      const command = buildFfmpegFanoutCommand({ inputUrl: request.inputUrl, destinations: selected, profiles: getRuntimeStore().profiles, streamKeys, ffmpegPath: request.ffmpegPath })
+      await this.setDestinationRuntimeState(selected.map(item => item.id), { status: 'connecting', health: 'degraded', lastError: reason })
+      this.process.start(command)
+      getRuntimeStore().status = { live: true, pipelineHealth: 'degraded', ingestStatus: 'degraded' }
+    })
+  }
+
+  async markPipelineFailed(reason: string): Promise<void> {
+    getRuntimeStore().status = { live: false, pipelineHealth: 'failed', ingestStatus: 'failed' }
+    await this.setDestinationRuntimeState(this.activeDestinationIds, { status: 'cooldown', health: 'failed', lastError: reason })
+    const active = getRuntimeStore().streams.find(item => item.stoppedAt === null)
+    if (active) {
+      active.stoppedAt = new Date().toISOString()
+      await this.persistence.transaction(db => updateStream(db, active.id, { endedAt: active.stoppedAt, status: 'offline' }))
+    }
+    this.log('error', 'watchdog', reason)
+  }
+
+  private async handleRuntimeEvent(type: string, payload: unknown): Promise<void> {
+    if (type === 'pipeline.started') {
+      await this.setDestinationRuntimeState(this.activeDestinationIds, { status: 'live', health: 'ok', lastHandshakeAt: new Date().toISOString(), lastError: null })
+      getRuntimeStore().status = { live: true, pipelineHealth: 'ok', ingestStatus: 'connected' }
+    } else if (type === 'pipeline.failed') {
+      const reason = typeof payload === 'object' && payload && 'error' in payload ? String((payload as { error: unknown }).error) : 'FFmpeg failed'
+      await this.setDestinationRuntimeState(this.activeDestinationIds, { status: 'degraded', health: 'failed', lastError: reason })
+      getRuntimeStore().status = { live: true, pipelineHealth: 'degraded', ingestStatus: 'degraded' }
+    }
+  }
+
+  private async setDestinationRuntimeState(ids: string[], patch: Partial<DestinationState>): Promise<void> {
+    if (!ids.length) return
+    await this.persistence.transaction(db => {
+      for (const id of ids) updateDestination(db, id, patch)
+    })
+    for (const id of ids) {
+      const index = getRuntimeStore().destinations.findIndex(item => item.id === id)
+      if (index >= 0) getRuntimeStore().destinations[index] = { ...getRuntimeStore().destinations[index], ...patch }
+    }
+    this.events.publish('destinations.runtime.updated', { ids, patch })
   }
 
   status() {
