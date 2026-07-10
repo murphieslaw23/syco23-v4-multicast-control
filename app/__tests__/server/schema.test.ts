@@ -253,13 +253,14 @@ describe('server/metadata middleware', () => {
 })
 
 describe('server/api-routes', () => {
-  it('handler returns not implemented fallback', async () => {
+  it('handler returns the runtime metadata snapshot', async () => {
     const { createApiRouteHandler } = await import('../../server/api-routes')
     const handler = createApiRouteHandler()
     const res = await handler('GET /api/metadata')
-    expect(res.ok).toBe(false)
-    expect(res.status).toBe(501)
-    expect(res.error).toBe('Not implemented')
+    expect(res.ok).toBe(true)
+    expect(res.status).toBe(200)
+    expect(res.error).toBeNull()
+    expect(res.data).toMatchObject({ artist: 'SYCO23' })
   })
 })
 
