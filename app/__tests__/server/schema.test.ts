@@ -136,10 +136,9 @@ describe("server/metadata middleware", () => {
   it("poll handles non-OK response gracefully", async () => {
     const { createMetadataMiddleware } = await import("../../server/metadata");
 
-    const origFetch = globalThis.fetch;
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValue({ ok: false, status: 500 }) as any;
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 500 }));
 
     const mw = createMetadataMiddleware({
       apiUrl: "https://example.com",
@@ -148,16 +147,15 @@ describe("server/metadata middleware", () => {
     });
     const result = await mw.poll();
     expect(result.title).toBe("");
-    globalThis.fetch = origFetch;
+    fetchSpy.mockRestore();
   });
 
   it("poll handles network error gracefully", async () => {
     const { createMetadataMiddleware } = await import("../../server/metadata");
 
-    const origFetch = globalThis.fetch;
-    globalThis.fetch = vi
-      .fn()
-      .mockRejectedValue(new Error("Network fail")) as any;
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('Network fail'));
 
     const mw = createMetadataMiddleware({
       apiUrl: "https://example.com",
@@ -166,24 +164,22 @@ describe("server/metadata middleware", () => {
     });
     const result = await mw.poll();
     expect(result.title).toBe("");
-    globalThis.fetch = origFetch;
+    fetchSpy.mockRestore();
   });
 
   it("poll updates latest on successful response", async () => {
     const { createMetadataMiddleware } = await import("../../server/metadata");
 
-    const mockResponse = {
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          id: "s1",
-          name: "Station",
-          now_playing: { song: { title: "Hit Song", artist: "DJ", art: "" } },
-          listeners: { current: 42 },
-        }),
-    };
-    const origFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn().mockResolvedValue(mockResponse) as any;
+    const mockResponse = new Response(JSON.stringify({
+      id: 's1',
+      name: 'Station',
+      now_playing: { song: { title: 'Hit Song', artist: 'DJ', art: '' } },
+      listeners: { current: 42 },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockResponse);
 
     const mw = createMetadataMiddleware({
       apiUrl: "https://example.com",
@@ -194,7 +190,7 @@ describe("server/metadata middleware", () => {
     expect(result.title).toBe("Hit Song");
     expect(result.artist).toBe("DJ");
     expect(mw.getLatest().title).toBe("Hit Song");
-    globalThis.fetch = origFetch;
+    fetchSpy.mockRestore();
   });
 
   it("normalizeAzuraCast uses fallback for missing song fields", async () => {

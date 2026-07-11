@@ -2,11 +2,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { IncomingMessage } from 'node:http'
 import { PersistentDatabase } from '../../server/persistent-db'
 import { AuthService } from '../../server/runtime/auth-service'
 import { RateLimiter } from '../../server/runtime/rate-limiter'
 
-const req=(cookie?:string)=>({headers:cookie?{cookie,'user-agent':'vitest'}:{'user-agent':'vitest'},socket:{remoteAddress:'127.0.0.1'},method:'GET'} as any)
+const req = (cookie?: string) => ({
+  headers: cookie ? { cookie, 'user-agent': 'vitest' } : { 'user-agent': 'vitest' },
+  socket: { remoteAddress: '127.0.0.1' },
+  method: 'GET',
+}) as unknown as IncomingMessage
 describe('AuthService',()=>{let dir='';let db:PersistentDatabase;let auth:AuthService
 beforeEach(async()=>{dir=await mkdtemp(join(tmpdir(),'syco-auth-'));db=new PersistentDatabase(join(dir,'db.sqlite'));await db.open();auth=new AuthService(db,60000);await auth.initialize()})
 afterEach(async()=>{await rm(dir,{recursive:true,force:true})})

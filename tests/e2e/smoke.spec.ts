@@ -1,17 +1,16 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
-test('SYCO23 brand header is visible on root page', async ({ page }) => {
+test('loads the authenticated production control shell', async ({ page }) => {
   await page.goto('/')
-  const header = page.locator('.syco-header')
-  await expect(header).toBeVisible()
-  await expect(header.locator('.syco-brand')).toHaveText('SYCO23')
+  await expect(page.locator('.syco-header')).toBeVisible()
+  await expect(page.locator('.syco-brand')).toHaveText('SYCO23')
+  await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
+  await expect(page.locator('[data-nav="live"]')).toHaveAttribute('aria-current', 'page')
 })
 
-test('navigation items are present', async ({ page }) => {
+test('exposes the operational routes', async ({ page }) => {
   await page.goto('/')
-  const nav = page.locator('.syco-nav')
-  await expect(nav).toBeVisible()
-  await expect(nav.locator('[data-nav="live"]')).toBeVisible()
-  await expect(nav.locator('[data-nav="destinations"]')).toBeVisible()
-  await expect(nav.locator('[data-nav="logs"]')).toBeVisible()
+  for (const route of ['destinations', 'profiles', 'templates', 'schedule', 'archive', 'status', 'logs', 'overlay', 'about']) {
+    await expect(page.locator(`.side-nav [data-nav="${route}"]`)).toBeVisible()
+  }
 })

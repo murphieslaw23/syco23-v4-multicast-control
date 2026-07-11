@@ -131,7 +131,7 @@ Live pipeline status with FPS, bitrate, and codec reporting. Watchdog integratio
 
 ```
 Vue 3 (Composition API) · Vite 8 · TypeScript 5.4
-Vitest 4 · Playwright 1 · sql.js · ws · FFmpeg
+Vitest 4 · Playwright 1 · native SQLite/WAL · ws · FFmpeg
 ESLint 8 · vue-tsc 2.x
 ```
 
@@ -185,7 +185,8 @@ npm install
 ### Development
 
 ```bash
-npm run dev      # Start dev server at http://localhost:5173
+npm run dev      # Start the integrated runtime at http://localhost:3000
+npm run dev:ui   # Optional Vite-only UI development server
 ```
 
 ### Build
@@ -198,16 +199,17 @@ npm run preview  # Preview production build
 ### Testing
 
 ```bash
-npm run test          # 233 unit + integration tests
-npm run test:coverage # With coverage report (100% enforced)
-npm run e2e           # Playwright E2E (36 screenshot specs)
+npm test              # Deterministic unit and integration suite
+npm run test:coverage # Coverage report
+npm run e2e           # Production-runtime critical path, mobile and WCAG gates
+npm run release:check # Audit, types, lint, tests and production build
 ```
 
 ### All Scripts
 
 | Command                 | Description                   |
 | ----------------------- | ----------------------------- |
-| `npm run dev`           | Vite dev server               |
+| `npm run dev`           | Integrated control runtime          |
 | `npm run build`         | Type-check + production build |
 | `npm run preview`       | Preview production build      |
 | `npm run test`          | Run all unit tests            |
@@ -215,7 +217,8 @@ npm run e2e           # Playwright E2E (36 screenshot specs)
 | `npm run test:coverage` | Coverage report               |
 | `npm run lint`          | ESLint                        |
 | `npm run typecheck`     | TypeScript check              |
-| `npm run e2e`           | Playwright E2E                |
+| `npm run e2e`           | Production-runtime Playwright gates |
+| `npm run release:check` | Complete source release gate         |
 
 ---
 
@@ -349,7 +352,7 @@ Runtime endpoints:
 - `GET /api/events`
 - `WS /api/events/ws`
 
-State is persisted as a SQLite database at `SYCO_DB_PATH`. Writes use a transaction followed by an atomic temporary-file rename. Docker persists this file in the `syco23-data` volume.
+State is persisted as native SQLite at `SYCO_DB_PATH`. Production uses WAL mode, `synchronous=NORMAL`, integrity-checked backups and explicit close/checkpoint behavior. Existing sql.js snapshot files are valid SQLite databases and are opened in place by the native driver. Docker persists the database, WAL files, assets, previews and backups in the `syco23-data` volume.
 
 When `SYCO_API_TOKEN` is configured, HTTP clients must send `Authorization: Bearer <token>`. The browser event client uses the same runtime token from `window.SYCO_CONFIG.apiToken`.
 
@@ -363,7 +366,7 @@ Roles:
 - `operator`: viewer permissions plus pipeline control, schedule management, and incident resolution.
 - `admin`: unrestricted access, including destination/profile configuration, audit history, and backup/restore.
 
-Configure `SYCO_ADMIN_TOKEN`, `SYCO_OPERATOR_TOKEN`, and `SYCO_VIEWER_TOKEN`. `SYCO_API_TOKEN` remains an administrator-token compatibility alias. When no token is configured, the runtime permits local development access as an administrator; production deployments must set tokens.
+Configure a bootstrap administrator account, role tokens, or both. `SYCO_API_TOKEN` remains an administrator-token compatibility alias. Authentication is fail-closed when `NODE_ENV=production`; the local administrator fallback exists only in non-production development and test runtimes.
 
 Operational endpoints include:
 

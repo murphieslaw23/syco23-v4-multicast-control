@@ -1,6 +1,4 @@
 import { ref, computed, type ComputedRef } from 'vue'
-import { getSycoAppState } from './store'
-import type { PipelineHealth } from '../types/index'
 
 export interface WatchdogThresholds {
   stallSeconds: number
@@ -32,7 +30,6 @@ const DEFAULT_THRESHOLDS: WatchdogThresholds = {
 }
 
 export function useWatchdogService(): UseWatchdogServiceReturn {
-  const state = getSycoAppState()
   const currentStatus = ref<WatchdogStatus>({
     monitored: false,
     checksCount: 0,

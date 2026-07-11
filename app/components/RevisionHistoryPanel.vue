@@ -76,22 +76,22 @@ watch(selectedId,()=>void loadRevisions())
 </script>
 
 <template>
-<section class="revision-panel ops-panel">
-  <header class="revision-panel__header"><div><p class="eyebrow">CONFIGURATION CONTROL</p><h2>Revision history</h2></div><button class="control-button" :disabled="loading" @click="loadRevisions">Refresh</button></header>
-  <div class="revision-controls">
-    <label>Resource<select v-model="resource" data-testid="revision-resource"><option value="destination">Destinations</option><option value="schedule">Schedules</option><option value="transmission-kit">Transmission kits</option><option value="profile">Output profiles</option><option value="template">Templates</option></select></label>
-    <label>Record<select v-model="selectedId" data-testid="revision-record"><option v-for="item in resources" :key="item.id" :value="item.id">{{ item.label }} · v{{ item.version }}</option></select></label>
-    <label>Restore revision<select v-model.number="selectedRevision" data-testid="restore-revision"><option v-for="item in revisions" :key="item.id" :value="item.revision">v{{ item.revision }} · {{ item.actor }} · {{ new Date(item.createdAt).toLocaleString() }}</option></select></label>
-    <label>Compare with<select v-model.number="compareRevision" data-testid="compare-revision"><option v-for="item in revisions" :key="item.id" :value="item.revision">v{{ item.revision }}</option></select></label>
-  </div>
-  <p v-if="error" class="alert alert--error" role="alert">{{ error }}</p><p v-if="notice" class="alert" role="status">{{ notice }}</p>
-  <div v-if="selectedRecord" class="revision-grid">
-    <article><h3>Revision v{{ selectedRecord.revision }}</h3><pre>{{ JSON.stringify(selectedRecord.snapshot,null,2) }}</pre></article>
-    <article v-if="compareRecord"><h3>Changed fields</h3><ul data-testid="revision-diff"><li v-for="field in changedFields" :key="field"><strong>{{ field }}</strong><code>{{ JSON.stringify(compareRecord.snapshot[field]) }} → {{ JSON.stringify(selectedRecord.snapshot[field]) }}</code></li></ul><p v-if="!changedFields.length" class="muted">No differences between the selected revisions.</p></article>
-  </div>
-  <button v-if="selectedRecord" class="control-button control-button--primary" :disabled="loading" data-testid="restore-button" @click="restore">Restore selected revision</button>
-  <p v-if="!loading && !resources.length" class="empty">No revisioned resources are available.</p>
-</section>
+  <section class="revision-panel ops-panel">
+    <header class="revision-panel__header"><div><p class="eyebrow">CONFIGURATION CONTROL</p><h2>Revision history</h2></div><button class="control-button" :disabled="loading" @click="loadRevisions">Refresh</button></header>
+    <div class="revision-controls">
+      <label>Resource<select v-model="resource" data-testid="revision-resource"><option value="destination">Destinations</option><option value="schedule">Schedules</option><option value="transmission-kit">Transmission kits</option><option value="profile">Output profiles</option><option value="template">Templates</option></select></label>
+      <label>Record<select v-model="selectedId" data-testid="revision-record"><option v-for="item in resources" :key="item.id" :value="item.id">{{ item.label }} · v{{ item.version }}</option></select></label>
+      <label>Restore revision<select v-model.number="selectedRevision" data-testid="restore-revision"><option v-for="item in revisions" :key="item.id" :value="item.revision">v{{ item.revision }} · {{ item.actor }} · {{ new Date(item.createdAt).toLocaleString() }}</option></select></label>
+      <label>Compare with<select v-model.number="compareRevision" data-testid="compare-revision"><option v-for="item in revisions" :key="item.id" :value="item.revision">v{{ item.revision }}</option></select></label>
+    </div>
+    <p v-if="error" class="alert alert--error" role="alert">{{ error }}</p><p v-if="notice" class="alert" role="status">{{ notice }}</p>
+    <div v-if="selectedRecord" class="revision-grid">
+      <article><h3>Revision v{{ selectedRecord.revision }}</h3><pre>{{ JSON.stringify(selectedRecord.snapshot,null,2) }}</pre></article>
+      <article v-if="compareRecord"><h3>Changed fields</h3><ul data-testid="revision-diff"><li v-for="field in changedFields" :key="field"><strong>{{ field }}</strong><code>{{ JSON.stringify(compareRecord.snapshot[field]) }} → {{ JSON.stringify(selectedRecord.snapshot[field]) }}</code></li></ul><p v-if="!changedFields.length" class="muted">No differences between the selected revisions.</p></article>
+    </div>
+    <button v-if="selectedRecord" class="control-button control-button--primary" :disabled="loading" data-testid="restore-button" @click="restore">Restore selected revision</button>
+    <p v-if="!loading && !resources.length" class="empty">No revisioned resources are available.</p>
+  </section>
 </template>
 
 <style scoped>

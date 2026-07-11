@@ -422,13 +422,6 @@ export class ControlService {
             destination.streamKeyRef,
           );
       }
-      const command = buildFfmpegFanoutCommand({
-        inputUrl: request.inputUrl,
-        destinations: selected,
-        profiles: getRuntimeStore().profiles,
-        streamKeys,
-        ffmpegPath: request.ffmpegPath,
-      });
       const template = request.templateId ? this.getTemplate(request.templateId) : null;
       const sceneMetadata = { title: getRuntimeStore().metadata.title, artist: getRuntimeStore().metadata.artist, show: getRuntimeStore().metadata.show ?? undefined, listeners: getRuntimeStore().metadata.listeners ?? undefined };
       const sceneAssets = this.resolveSceneAssets(template?.scene);

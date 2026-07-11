@@ -19,16 +19,21 @@
     "pm2:start": "npm run build && pm2 start ecosystem.config.cjs",
     "dev:ui": "vite",
     "dev:server": "tsx watch app/server/runtime-server.ts",
-    "start": "tsx app/server/runtime-server.ts"
+    "start": "tsx app/server/runtime-server.ts",
+    "test:ci": "npm test",
+    "release:check": "npm run security:audit && npm run typecheck && npm run lint && npm test && npm run build",
+    "e2e:a11y": "playwright test tests/e2e/accessibility.spec.ts"
   },
   "dependencies": {
-    "@types/sql.js": "^1.4.11",
+    "better-sqlite3": "^12.11.1",
     "hls.js": "^1.6.16",
     "sql.js": "^1.14.1",
     "vue": "^3.4.0",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "tsx": "^4.23.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
     "@playwright/test": "^1.42.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.12.0",
@@ -41,12 +46,12 @@
     "eslint": "^8.57.0",
     "eslint-plugin-vue": "^9.23.0",
     "jsdom": "^24.0.0",
-    "tsx": "^4.23.0",
     "typescript": "^5.4.0",
     "vite": "^8.1.3",
     "vitest": "^4.1.10",
     "vue-eslint-parser": "^9.4.0",
     "vue-tsc": "^2.0.0",
-    "wait-on": "^8.0.5"
+    "wait-on": "^8.0.5",
+    "@types/sql.js": "^1.4.11"
   }
 }

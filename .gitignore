@@ -22,3 +22,11 @@ logs
 .env
 .env.*
 !.env.example
+
+# Local verification artifacts
+.tmp/
+test-results/
+playwright-report/
+coverage/
+*.sqlite
+*.sqlite-*

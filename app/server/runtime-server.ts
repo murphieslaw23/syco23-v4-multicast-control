@@ -29,7 +29,6 @@ import { MetadataRuntime } from "./runtime/metadata-runtime";
 import { HlsPreviewRuntime } from "./runtime/hls-preview-runtime";
 import { PreviewTicketStore } from "./runtime/preview-tickets";
 import type {
-  DestinationState,
   SceneGraph,
   Template,
 } from "../contracts/domain";
@@ -42,13 +41,15 @@ import { ProviderMonitorRuntime } from "./runtime/provider-monitor-runtime";
 import { RetentionRuntime } from "./runtime/retention-runtime";
 import { IdempotencyStore } from "./runtime/idempotency-store";
 import { insertLog } from "./dao/logs";
-import { AuthService } from "./runtime/auth-service";
+import { AuthService, type AuthIdentity } from "./runtime/auth-service";
+import { assertProductionAuthentication, authenticateRequest } from "./runtime/authentication";
 import { RateLimiter } from "./runtime/rate-limiter";
 import { handleProfileRoutes } from "./http/routes/profiles";
 import { handleDestinationRoutes } from "./http/routes/destinations";
 import { handleScheduleRoutes } from "./http/routes/schedules";
 import { handleTransmissionKitRoutes } from "./http/routes/transmission-kits";
 import { handleConfigurationRevisionRoutes } from "./http/routes/configuration-revisions";
+import { handleMetadataRoutes } from "./http/routes/metadata";
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "0.0.0.0";
@@ -133,13 +134,7 @@ const retention = new RetentionRuntime(persistence, events, {
   ),
 });
 
-interface AuthContext {
-  actor: string;
-  role: Role;
-  userId?: string;
-  sessionId?: string;
-  csrfToken?: string;
-}
+type AuthContext = AuthIdentity;
 const rank: Record<Role, number> = { viewer: 0, operator: 1, admin: 2 };
 
 function json(
@@ -175,25 +170,7 @@ async function body(
 }
 
 function auth(request: IncomingMessage): AuthContext | null {
-  const session = authService.authenticate(request);
-  if (session) return session;
-  const header = request.headers.authorization || "",
-    supplied = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const configured: Array<[string | undefined, AuthContext]> = [
-    [
-      process.env.SYCO_ADMIN_TOKEN || process.env.SYCO_API_TOKEN,
-      { actor: "api-admin", role: "admin" },
-    ],
-    [
-      process.env.SYCO_OPERATOR_TOKEN,
-      { actor: "api-operator", role: "operator" },
-    ],
-    [process.env.SYCO_VIEWER_TOKEN, { actor: "api-viewer", role: "viewer" }],
-  ];
-  const active = configured.filter(([token]) => Boolean(token));
-  if (!active.length && !process.env.SYCO_BOOTSTRAP_ADMIN_USER)
-    return { actor: "local-dev", role: "admin" };
-  return active.find(([token]) => token === supplied)?.[1] ?? null;
+  return authenticateRequest(request, authService);
 }
 
 function requireRole(context: AuthContext, role: Role): void {
@@ -761,36 +738,16 @@ async function route(
       await audited(context, "delete", "asset", id, () => assets.remove(id));
       return json(response, 204, null, requestId);
     }
-    if (request.method === "GET" && url.pathname === "/api/metadata")
-      return json(
-        response,
-        200,
-        { ok: true, data: metadata.snapshot() },
-        requestId,
-      );
-    if (request.method === "GET" && url.pathname === "/api/metadata/stats")
-      return json(
-        response,
-        200,
-        { ok: true, data: metadata.stats() },
-        requestId,
-      );
-    if (request.method === "GET" && url.pathname === "/api/metadata/health")
-      return json(
-        response,
-        200,
-        { ok: true, data: metadata.snapshot().health },
-        requestId,
-      );
-    if (request.method === "POST" && url.pathname === "/api/metadata/refresh") {
-      requireRole(context, "operator");
-      return json(
-        response,
-        200,
-        { ok: true, data: await metadata.poll() },
-        requestId,
-      );
-    }
+    if (await handleMetadataRoutes({
+      request,
+      response,
+      url,
+      context,
+      requestId,
+      metadata,
+      sendJson: json,
+      requireRole,
+    })) return;
     if (request.method === "GET" && url.pathname === "/api/status")
       return json(
         response,
@@ -1226,6 +1183,10 @@ async function route(
 async function main(): Promise<void> {
   await service.initialize();
   await authService.initialize();
+  assertProductionAuthentication(
+    process.env,
+    authService.listUsers().some((user) => user.enabled),
+  );
   await authService.prune();
   await assets.initialize();
   await metadata.initialize();
@@ -1319,9 +1280,9 @@ async function main(): Promise<void> {
       retention.stop();
       telemetry.close();
       sockets.close();
-      void Promise.allSettled([service.stopPipeline(), preview.stop()]).finally(
-        () => server.close(() => process.exit(0)),
-      );
+      void Promise.allSettled([service.stopPipeline(), preview.stop()])
+        .then(() => persistence.close())
+        .finally(() => server.close(() => process.exit(0)));
     });
 }
 

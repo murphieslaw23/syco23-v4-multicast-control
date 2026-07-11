@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { updateSycoAppState } from '../../composables/store'
-import type { DestinationState, Provider } from '../../types/index'
+import type { DestinationState } from '../../types/index'
 
 const makeDestination = (overrides: Partial<DestinationState> = {}): DestinationState => ({
   id: 'dest-1',

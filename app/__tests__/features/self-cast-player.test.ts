@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { updateSycoAppState } from '../../composables/store'
 import type { DestinationState } from '../../types/index'
+import { createDestinationApi } from '../helpers/destination-api'
 
 const makeDestination = (overrides: Partial<DestinationState> = {}): DestinationState => ({
   id: 'dest-1',
@@ -36,7 +37,7 @@ describe('components/DestinationMatrix — local provider', () => {
       ],
     })
     const mod = await import('../../components/DestinationMatrix.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     expect(wrapper.find('.syco-dest-local-badge').exists()).toBe(true)
     expect(wrapper.find('.syco-dest-local-badge').text()).toBe('SELF')
   })
@@ -48,13 +49,13 @@ describe('components/DestinationMatrix — local provider', () => {
       ],
     })
     const mod = await import('../../components/DestinationMatrix.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     expect(wrapper.find('.syco-dest-local-badge').exists()).toBe(false)
   })
 
   it('local provider appears in the provider dropdown', async () => {
     const mod = await import('../../components/DestinationMatrix.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     await wrapper.find('.syco-btn-sm').trigger('click')
     const options = wrapper.findAll('.syco-input option')
     const optionTexts = options.map((o) => o.text())
@@ -63,7 +64,7 @@ describe('components/DestinationMatrix — local provider', () => {
 
   it('local provider is first option in dropdown', async () => {
     const mod = await import('../../components/DestinationMatrix.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     await wrapper.find('.syco-btn-sm').trigger('click')
     const options = wrapper.findAll('.syco-input option')
     expect(options.at(0)!.text()).toBe('local')
@@ -76,25 +77,29 @@ describe('components/DestinationMatrix — local provider', () => {
       ],
     })
     const mod = await import('../../components/DestinationMatrix.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
 
     const statusEl = wrapper.find('.syco-dest-status')
     expect(statusEl.text()).toBe('configured')
 
     // configured → armed
     await statusEl.trigger('click')
+    await flushPromises()
     expect(statusEl.text()).toBe('armed')
 
     // armed → connecting
     await statusEl.trigger('click')
+    await flushPromises()
     expect(statusEl.text()).toBe('connecting')
 
     // connecting → live
     await statusEl.trigger('click')
+    await flushPromises()
     expect(statusEl.text()).toBe('live')
 
     // live → idle
     await statusEl.trigger('click')
+    await flushPromises()
     expect(statusEl.text()).toBe('idle')
   })
 })
@@ -119,7 +124,7 @@ describe('components/SycoVideoPlayer — self-cast', () => {
 
   it('shows NO SIGNAL when no local destination is live', async () => {
     const mod = await import('../../components/SycoVideoPlayer.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     expect(wrapper.find('.syco-player-signal').text()).toBe('NO SIGNAL')
     expect(wrapper.find('.syco-player-indicator').exists()).toBe(false)
   })
@@ -131,7 +136,7 @@ describe('components/SycoVideoPlayer — self-cast', () => {
       ],
     })
     const mod = await import('../../components/SycoVideoPlayer.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     expect(wrapper.find('.syco-player-indicator').text()).toBe('SELF CAST')
     expect(wrapper.find('.syco-player-dest').text()).toBe('Cam 1')
   })
@@ -143,7 +148,7 @@ describe('components/SycoVideoPlayer — self-cast', () => {
       ],
     })
     const mod = await import('../../components/SycoVideoPlayer.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     expect(wrapper.find('.syco-player-dest').text()).toBe('Studio Feed')
   })
 
@@ -154,7 +159,7 @@ describe('components/SycoVideoPlayer — self-cast', () => {
       ],
     })
     const mod = await import('../../components/SycoVideoPlayer.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     expect(wrapper.find('.syco-player-signal').text()).toBe('NO SIGNAL')
   })
 
@@ -165,7 +170,7 @@ describe('components/SycoVideoPlayer — self-cast', () => {
       ],
     })
     const mod = await import('../../components/SycoVideoPlayer.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     expect(wrapper.find('.syco-player-signal').text()).toBe('NO SIGNAL')
   })
 
@@ -176,13 +181,13 @@ describe('components/SycoVideoPlayer — self-cast', () => {
       ],
     })
     const mod = await import('../../components/SycoVideoPlayer.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     expect(wrapper.find('.syco-player').classes()).toContain('syco-player--active')
   })
 
   it('does not apply active class when no self-cast', async () => {
     const mod = await import('../../components/SycoVideoPlayer.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     expect(wrapper.find('.syco-player').classes()).not.toContain('syco-player--active')
   })
 })

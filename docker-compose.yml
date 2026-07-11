@@ -7,25 +7,32 @@ services:
     container_name: syco23-multicast-control
     restart: unless-stopped
     init: true
+    stop_grace_period: 30s
     ports:
-      - "8080:3000"
+      - "127.0.0.1:${SYCO_BIND_PORT:-3000}:3000"
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: 3000
+      SYCO_DB_DRIVER: native
       SYCO_DB_PATH: /app/data/syco23.sqlite
-      SYCO_API_TOKEN: ${SYCO_API_TOKEN:-}
+      SYCO_DATA_DIR: /app/data
+      SYCO_ASSET_DIR: /app/data/assets
+      SYCO_PREVIEW_DIR: /app/data/preview
+      SYCO_BACKUP_DIR: /app/data/backups
+      SYCO_BOOTSTRAP_ADMIN_USER: ${SYCO_BOOTSTRAP_ADMIN_USER:?Set SYCO_BOOTSTRAP_ADMIN_USER}
+      SYCO_BOOTSTRAP_ADMIN_PASSWORD: ${SYCO_BOOTSTRAP_ADMIN_PASSWORD:?Set SYCO_BOOTSTRAP_ADMIN_PASSWORD}
       SYCO_RETENTION_LOG_DAYS: ${SYCO_RETENTION_LOG_DAYS:-30}
       SYCO_RETENTION_AUDIT_DAYS: ${SYCO_RETENTION_AUDIT_DAYS:-365}
       SYCO_PROVIDER_PROBE_INTERVAL_MS: ${SYCO_PROVIDER_PROBE_INTERVAL_MS:-15000}
     volumes:
       - syco23-data:/app/data
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health/ready"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 20s
     read_only: true
     tmpfs:
       - /tmp:size=128m,noexec,nosuid,nodev
@@ -33,6 +40,15 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    pids_limit: 512
+    cpus: 5.0
+    mem_limit: 6g
+    mem_reservation: 4g
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
 
 volumes:
   syco23-data:

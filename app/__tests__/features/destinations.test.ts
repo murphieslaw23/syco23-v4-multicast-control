@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { updateSycoAppState } from '../../composables/store'
 import type { DestinationState } from '../../types/index'
+import { createDestinationApi } from '../helpers/destination-api'
 
 const makeDestination = (overrides: Partial<DestinationState> = {}): DestinationState => ({
   id: 'dest-1',
@@ -44,21 +45,21 @@ describe('components/LiveControl', () => {
 
   it('renders without error', () => {
     return import('../../components/LiveControl.vue').then((mod) => {
-      const wrapper = mount(mod.default)
+      const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
       expect(wrapper.find('.syco-live').exists()).toBe(true)
     })
   })
 
   it('shows OFFLINE status when not live', async () => {
     const mod = await import('../../components/LiveControl.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     expect(wrapper.find('.syco-status-badge').text()).toBe('OFFLINE')
   })
 
   it('shows pipeline health badge', async () => {
     updateSycoAppState({ pipelineHealth: 'degraded' })
     const mod = await import('../../components/LiveControl.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     expect(wrapper.find('.syco-badge').text()).toBe('degraded')
   })
 })
@@ -70,14 +71,14 @@ describe('components/DestinationMatrix', () => {
 
   it('renders without error', () => {
     return import('../../components/DestinationMatrix.vue').then((mod) => {
-      const wrapper = mount(mod.default)
+      const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
       expect(wrapper.find('.syco-destinations').exists()).toBe(true)
     })
   })
 
   it('shows empty state when no destinations', async () => {
     const mod = await import('../../components/DestinationMatrix.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     expect(wrapper.find('.syco-empty').text()).toContain('No destinations')
   })
 
@@ -89,19 +90,19 @@ describe('components/DestinationMatrix', () => {
       ],
     })
     const mod = await import('../../components/DestinationMatrix.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     expect(wrapper.findAll('.syco-dest-card')).toHaveLength(2)
   })
 
   it('hides form by default', async () => {
     const mod = await import('../../components/DestinationMatrix.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     expect(wrapper.find('.syco-form').exists()).toBe(false)
   })
 
   it('shows form when ADD is clicked', async () => {
     const mod = await import('../../components/DestinationMatrix.vue')
-    const wrapper = mount(mod.default)
+    const wrapper = mount(mod.default, { props: { api: createDestinationApi() } })
     await wrapper.find('.syco-btn-sm').trigger('click')
     expect(wrapper.find('.syco-form').exists()).toBe(true)
   })

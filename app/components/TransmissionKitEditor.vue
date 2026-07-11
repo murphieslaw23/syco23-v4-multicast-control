@@ -41,19 +41,19 @@ function save():void {
 </script>
 
 <template>
-<section class="kit-editor">
-  <header class="kit-editor__header"><div><p class="eyebrow">PROVIDER TRANSMISSION KIT</p><h3>{{ kit.titleBlock }}</h3><small>v{{ kit.version || 1 }} · {{ completedCount }}/{{ draft.checklist.length }} checks complete</small></div><div class="kit-editor__actions"><button type="button" class="control-button" @click="copyText('title',draft.titleBlock)">{{ copied==='title'?'Copied':'Copy title' }}</button><button type="button" class="danger" @click="emit('remove')">Delete</button></div></header>
-  <p v-if="error" class="alert alert--error" role="alert">{{ error }}</p>
-  <div class="kit-editor__grid">
-    <label>Title block<textarea v-model="draft.titleBlock" data-testid="kit-title"></textarea><button type="button" @click="copyText('title',draft.titleBlock)">Copy</button></label>
-    <label>Description<textarea v-model="draft.descriptionBlock" rows="8"></textarea><button type="button" data-testid="copy-description" @click="copyText('description',draft.descriptionBlock)">Copy</button></label>
-    <label>Launch notes<textarea v-model="draft.launchNotes" rows="5"></textarea><button type="button" @click="copyText('notes',draft.launchNotes)">Copy</button></label>
-    <label>Labels<input v-model="draft.labels"><button type="button" @click="copyText('labels',draft.labels)">Copy</button></label>
-    <label class="kit-editor__metadata">Metadata JSON<textarea v-model="draft.metadata" rows="10"></textarea><button type="button" @click="copyText('metadata',draft.metadata)">Copy</button></label>
-  </div>
-  <fieldset class="kit-checklist"><legend>Launch checklist</legend><label v-for="item in draft.checklist" :key="item.id"><input v-model="item.completed" type="checkbox" :data-testid="`check-${item.id}`"><span>{{ item.label }}</span><b v-if="item.required">Required</b></label></fieldset>
-  <div class="kit-editor__footer"><button type="button" class="control-button" @click="sync">Reset edits</button><button type="button" class="control-button control-button--primary" data-testid="save-kit" :disabled="busy" @click="save">Save kit revision</button></div>
-</section>
+  <section class="kit-editor">
+    <header class="kit-editor__header"><div><p class="eyebrow">PROVIDER TRANSMISSION KIT</p><h3>{{ kit.titleBlock }}</h3><small>v{{ kit.version || 1 }} · {{ completedCount }}/{{ draft.checklist.length }} checks complete</small></div><div class="kit-editor__actions"><button type="button" class="control-button" @click="copyText('title',draft.titleBlock)">{{ copied==='title'?'Copied':'Copy title' }}</button><button type="button" class="danger" @click="emit('remove')">Delete</button></div></header>
+    <p v-if="error" class="alert alert--error" role="alert">{{ error }}</p>
+    <div class="kit-editor__grid">
+      <label>Title block<textarea v-model="draft.titleBlock" data-testid="kit-title"></textarea><button type="button" @click="copyText('title',draft.titleBlock)">Copy</button></label>
+      <label>Description<textarea v-model="draft.descriptionBlock" rows="8"></textarea><button type="button" data-testid="copy-description" @click="copyText('description',draft.descriptionBlock)">Copy</button></label>
+      <label>Launch notes<textarea v-model="draft.launchNotes" rows="5"></textarea><button type="button" @click="copyText('notes',draft.launchNotes)">Copy</button></label>
+      <label>Labels<input v-model="draft.labels"><button type="button" @click="copyText('labels',draft.labels)">Copy</button></label>
+      <label class="kit-editor__metadata">Metadata JSON<textarea v-model="draft.metadata" rows="10"></textarea><button type="button" @click="copyText('metadata',draft.metadata)">Copy</button></label>
+    </div>
+    <fieldset class="kit-checklist"><legend>Launch checklist</legend><label v-for="item in draft.checklist" :key="item.id"><input v-model="item.completed" type="checkbox" :data-testid="`check-${item.id}`"><span>{{ item.label }}</span><b v-if="item.required">Required</b></label></fieldset>
+    <div class="kit-editor__footer"><button type="button" class="control-button" @click="sync">Reset edits</button><button type="button" class="control-button control-button--primary" data-testid="save-kit" :disabled="busy" @click="save">Save kit revision</button></div>
+  </section>
 </template>
 
 <style scoped>

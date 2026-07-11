@@ -73,8 +73,10 @@ describe('release readiness', () => {
 
   it('has .env.example', () => {
     const envExample = readFileSync(resolve(process.cwd(), '.env.example'), 'utf-8')
-    expect(envExample).toContain('AZURACAST_API_URL')
-    expect(envExample).toContain('SQLITE_FILE')
+    expect(envExample).toContain('SYCO_DB_DRIVER=native')
+    expect(envExample).toContain('SYCO_DB_PATH=')
+    expect(envExample).toContain('SYCO_BOOTSTRAP_ADMIN_PASSWORD=')
+    expect(envExample).not.toContain('SQLITE_FILE=')
   })
 
   it('README references documentation paths', () => {

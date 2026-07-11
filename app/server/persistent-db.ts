@@ -1,33 +1,59 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
-import { initDatabase, exportDatabase, importDatabase, getDb, isDbReady, type SqlJsDatabase } from './db'
+import { closeDatabase, initDatabase, importDatabase, getDb, type SqlJsDatabase } from './db'
+import { NativeSqliteDatabase } from './native-db'
 import { SCHEMA_SQL } from './schema'
+
+export type DatabaseDriver = 'sqljs' | 'native'
+
+export interface PersistentDatabaseOptions {
+  driver?: DatabaseDriver
+}
 
 export class PersistentDatabase {
   private writeChain: Promise<void> = Promise.resolve()
-  constructor(readonly filePath = resolve(process.cwd(), 'data/syco23.sqlite')) {}
+  private connection: SqlJsDatabase | null = null
+  readonly driver: DatabaseDriver
+
+  constructor(
+    readonly filePath = resolve(process.cwd(), 'data/syco23.sqlite'),
+    options: PersistentDatabaseOptions = {},
+  ) {
+    this.driver = options.driver
+      ?? (process.env.SYCO_DB_DRIVER as DatabaseDriver | undefined)
+      ?? (process.env.NODE_ENV === 'production' ? 'native' : 'sqljs')
+    if (this.driver !== 'native' && this.driver !== 'sqljs') {
+      throw new Error(`Unsupported database driver: ${this.driver}`)
+    }
+  }
 
   async open(): Promise<SqlJsDatabase> {
+    if (this.connection) return this.connection
     await mkdir(dirname(this.filePath), { recursive: true })
+
+    if (this.driver === 'native') {
+      this.connection = new NativeSqliteDatabase(this.filePath)
+      this.migrate(this.connection)
+      ;(this.connection as NativeSqliteDatabase).configureWal()
+      return this.connection
+    }
+
     await initDatabase()
     try {
       const bytes = await readFile(this.filePath)
       if (bytes.byteLength > 0) importDatabase(new Uint8Array(bytes))
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-      await this.flush()
     }
-    this.migrate(getDb())
+    this.connection = getDb()
+    this.migrate(this.connection)
     await this.flush()
-    return getDb()
+    return this.connection
   }
-
 
   private migrate(db: SqlJsDatabase): void {
     const scheduleColumns = db.exec('PRAGMA table_info(schedules)')[0]?.values.map(row => String(row[1])) ?? []
-    if (scheduleColumns.length && !scheduleColumns.includes('action')) {
-      db.run('ALTER TABLE schedules RENAME TO schedules_legacy')
-    }
+    if (scheduleColumns.length && !scheduleColumns.includes('action')) db.run('ALTER TABLE schedules RENAME TO schedules_legacy')
     db.run(SCHEMA_SQL)
     const destinationColumns = db.exec('PRAGMA table_info(destinations)')[0]?.values.map(row => String(row[1])) ?? []
     if (!destinationColumns.includes('provider_ack_url')) db.run('ALTER TABLE destinations ADD COLUMN provider_ack_url TEXT')
@@ -66,8 +92,8 @@ export class PersistentDatabase {
   }
 
   get database(): SqlJsDatabase {
-    if (!isDbReady()) throw new Error('Persistent database is not open')
-    return getDb()
+    if (!this.connection) throw new Error('Persistent database is not open')
+    return this.connection
   }
 
   async transaction<T>(operation: (db: SqlJsDatabase) => T): Promise<T> {
@@ -84,26 +110,72 @@ export class PersistentDatabase {
     }
   }
 
-
   async backup(targetPath: string): Promise<string> {
     await mkdir(dirname(targetPath), { recursive: true })
-    await writeFile(targetPath, Buffer.from(exportDatabase()))
+    if (this.driver === 'native') {
+      await (this.database as NativeSqliteDatabase).backupTo(targetPath)
+      const validation = new NativeSqliteDatabase(targetPath)
+      try {
+        validation.integrityCheck()
+      } finally {
+        validation.close()
+      }
+      return targetPath
+    }
+    await writeFile(targetPath, Buffer.from(this.database.export()))
     return targetPath
   }
 
   async restore(bytes: Uint8Array): Promise<void> {
     if (!bytes.byteLength) throw new Error('Backup is empty')
+    if (this.driver === 'native') {
+      const temp = `${this.filePath}.restore`
+      await rm(temp, { force: true })
+      await writeFile(temp, Buffer.from(bytes))
+      try {
+        const validation = new NativeSqliteDatabase(temp)
+        try {
+          validation.integrityCheck()
+        } finally {
+          validation.close()
+        }
+      } catch (error) {
+        await rm(temp, { force: true })
+        throw error
+      }
+      this.connection?.close()
+      this.connection = null
+      await Promise.all([
+        rm(`${this.filePath}-wal`, { force: true }),
+        rm(`${this.filePath}-shm`, { force: true }),
+      ])
+      await rename(temp, this.filePath)
+      this.connection = new NativeSqliteDatabase(this.filePath)
+      this.migrate(this.connection)
+      ;(this.connection as NativeSqliteDatabase).configureWal()
+      return
+    }
     importDatabase(bytes)
+    this.connection = getDb()
     this.database.run('PRAGMA foreign_keys = ON')
     await this.flush()
   }
 
   async flush(): Promise<void> {
-    this.writeChain = this.writeChain.then(async () => {
+    if (this.driver === 'native') return
+    const operation = this.writeChain.then(async () => {
       const temp = `${this.filePath}.tmp`
-      await writeFile(temp, Buffer.from(exportDatabase()))
+      await writeFile(temp, Buffer.from(this.database.export()))
       await rename(temp, this.filePath)
     })
-    return this.writeChain
+    this.writeChain = operation.catch(() => undefined)
+    return operation
+  }
+
+  async close(): Promise<void> {
+    await this.writeChain.catch(() => undefined)
+    if (this.driver === 'sqljs') closeDatabase()
+    else this.connection?.close()
+    this.connection = null
   }
 }

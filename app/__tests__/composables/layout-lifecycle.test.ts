@@ -1,15 +1,21 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
+import type { PropType } from 'vue'
+import type { UseSycoLayoutReturn } from '../../composables/useSycoLayout'
+
+type LayoutComposable = () => UseSycoLayoutReturn
 
 function createTestComponent() {
   return {
     template: '<div :class="mode">{{ mode }}</div>',
     props: {
-      composable: { type: Function, required: true },
+      composable: {
+        type: Function as PropType<LayoutComposable>,
+        required: true,
+      },
     },
-    setup(props: any) {
-      const result = props.composable()
-      return result
+    setup(props: { composable: LayoutComposable }) {
+      return props.composable()
     },
   }
 }
@@ -17,8 +23,7 @@ function createTestComponent() {
 describe('composables/useSycoLayout full lifecycle', () => {
   it('mounts and unmounts without error', async () => {
     const { useSycoLayout } = await import('../../composables/useSycoLayout')
-    const component = createTestComponent()
-    const wrapper = mount(component, {
+    const wrapper = mount(createTestComponent(), {
       props: { composable: useSycoLayout },
     })
     expect(wrapper.vm.mode).toBeDefined()
@@ -31,8 +36,7 @@ describe('composables/useSycoLayout full lifecycle', () => {
     Object.defineProperty(window, 'innerWidth', { value: 800, configurable: true })
     Object.defineProperty(window, 'innerHeight', { value: 600, configurable: true })
 
-    const component = createTestComponent()
-    const wrapper = mount(component, {
+    const wrapper = mount(createTestComponent(), {
       props: { composable: useSycoLayout },
     })
 

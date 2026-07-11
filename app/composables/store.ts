@@ -1,4 +1,4 @@
-import { reactive, readonly } from 'vue'
+import { reactive } from 'vue'
 import type { SycoAppState, DestinationState } from '../types/index'
 import { detectLayout } from './layout'
 

@@ -1,5 +1,5 @@
 import type { DestinationState, OutputProfile, SceneGraph } from '../../types'
-import { compileSceneFiltergraph, compileSceneFilterComplex } from '../scene/scene-runtime'
+import { compileSceneFilterComplex } from '../scene/scene-runtime'
 import { getProviderAdapter } from '../provider-registry'
 
 export interface FfmpegBuildOptions {

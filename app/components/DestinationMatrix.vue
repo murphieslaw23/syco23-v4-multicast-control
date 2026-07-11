@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useDestinationMatrix } from '../composables/useDestinationMatrix'
-import { useSycoUiState } from '../composables/useSycoUiState'
+import { onMounted, ref } from 'vue'
+import { useRuntimeDestinationMatrix, type DestinationMatrixApi } from '../composables/useRuntimeDestinationMatrix'
 import type { Provider, DestinationStatus } from '../types/index'
 
-const { destinations, addDestination, removeDestination, updateDestinationStatus } = useDestinationMatrix()
-const ui = useSycoUiState()
+const props = defineProps<{ api?: DestinationMatrixApi }>()
+const matrix = useRuntimeDestinationMatrix(props.api)
+const { destinations, loading, error } = matrix
 
 const showForm = ref(false)
 const form = ref({
@@ -19,9 +19,9 @@ const form = ref({
 
 const providers: Provider[] = ['local', 'youtube', 'telegram', 'tiktok', 'twitch', 'instagram', 'mixer', 'mixcloud', 'facebook', 'custom-rtmp']
 
-function handleAdd() {
+async function handleAdd() {
   if (!form.value.label) return
-  addDestination({
+  await matrix.add({
     id: crypto.randomUUID(),
     provider: form.value.provider,
     label: form.value.label,
@@ -44,7 +44,7 @@ function handleAdd() {
   form.value = { provider: 'youtube', label: '', endpointUrl: '', streamKeyRef: '', videoProfile: '1080p', audioProfile: '128k' }
 }
 
-function cycleStatus(id: string, current: DestinationStatus) {
+async function cycleStatus(id: string, current: DestinationStatus) {
   const next: Record<DestinationStatus, DestinationStatus> = {
     idle: 'configured',
     configured: 'armed',
@@ -56,8 +56,10 @@ function cycleStatus(id: string, current: DestinationStatus) {
     cooldown: 'idle',
     disabled: 'idle',
   }
-  updateDestinationStatus(id, next[current])
+  await matrix.updateStatus(id, next[current])
 }
+
+onMounted(() => void matrix.load())
 
 const statusColors: Record<DestinationStatus, string> = {
   idle: 'var(--syco-text-muted)',
@@ -77,22 +79,23 @@ const statusColors: Record<DestinationStatus, string> = {
     <div class="syco-panel">
       <div class="syco-panel-header">
         <h2 class="syco-panel-title">DESTINATIONS</h2>
-        <button class="syco-btn-sm" @click="showForm = !showForm">
+        <button class="syco-btn-sm" type="button" :disabled="loading" @click="showForm = !showForm">
           {{ showForm ? 'CANCEL' : 'ADD' }}
         </button>
       </div>
 
       <form v-if="showForm" class="syco-form" @submit.prevent="handleAdd">
-        <select v-model="form.provider" class="syco-input">
+        <label>Provider<select v-model="form.provider" class="syco-input">
           <option v-for="p in providers" :key="p" :value="p">{{ p }}</option>
-        </select>
-        <input v-model="form.label" class="syco-input" placeholder="Label" />
-        <input v-model="form.endpointUrl" class="syco-input" placeholder="RTMP URL" />
-        <input v-model="form.streamKeyRef" class="syco-input" placeholder="Stream Key Ref" />
+        </select></label>
+        <label>Label<input v-model="form.label" class="syco-input" placeholder="Primary YouTube" required></label>
+        <label>RTMP URL<input v-model="form.endpointUrl" class="syco-input" inputmode="url" placeholder="rtmps://…"></label>
+        <label>Secret reference<input v-model="form.streamKeyRef" class="syco-input" autocomplete="off" placeholder="env:YOUTUBE_STREAM_KEY"></label>
         <button type="submit" class="syco-btn">SAVE</button>
       </form>
 
-      <div v-if="ui.state.destinations.length === 0" class="syco-empty">
+      <p v-if="error" class="syco-error" role="alert">{{ error }}</p>
+      <div v-if="!loading && destinations.length === 0" class="syco-empty">
         No destinations configured
       </div>
 
@@ -102,20 +105,23 @@ const statusColors: Record<DestinationStatus, string> = {
             {{ dest.label }}
             <span v-if="dest.provider === 'local'" class="syco-dest-local-badge">SELF</span>
           </span>
-          <span
+          <button
+            type="button"
             class="syco-dest-status"
             :class="{ 'syco-dest-status--local': dest.provider === 'local' }"
             :style="{ color: statusColors[dest.status] }"
+            :aria-label="`Advance ${dest.label} status from ${dest.status}`"
+            :disabled="loading"
             @click="cycleStatus(dest.id, dest.status)"
           >
             {{ dest.status }}
-          </span>
+          </button>
         </div>
         <div class="syco-dest-meta">
           <span>{{ dest.provider }}</span>
           <span>{{ dest.videoProfile }}</span>
         </div>
-        <button class="syco-btn-danger" @click="removeDestination(dest.id)">Remove</button>
+        <button class="syco-btn-danger" type="button" :disabled="loading" @click="matrix.remove(dest.id)">Remove</button>
       </div>
     </div>
   </section>
@@ -160,6 +166,15 @@ const statusColors: Record<DestinationStatus, string> = {
   min-height: 36px;
 }
 
+.syco-form label {
+  display: grid;
+  gap: var(--syco-space-1);
+  font-family: var(--syco-font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .syco-form {
   display: flex;
   flex-direction: column;
@@ -198,6 +213,12 @@ const statusColors: Record<DestinationStatus, string> = {
   min-height: 36px;
 }
 
+.syco-error {
+  color: var(--syco-danger);
+  font-family: var(--syco-font-mono);
+  font-size: 0.75rem;
+}
+
 .syco-empty {
   font-family: var(--syco-font-mono);
   font-size: 0.75rem;
@@ -229,7 +250,12 @@ const statusColors: Record<DestinationStatus, string> = {
   text-transform: uppercase;
   cursor: pointer;
   letter-spacing: 0.05em;
+  background: transparent;
+  border: 1px solid currentColor;
+  min-height: 36px;
+  padding: var(--syco-space-1) var(--syco-space-2);
 }
+
 
 .syco-dest-meta {
   display: flex;
