@@ -19,7 +19,7 @@ describe('a11y/contrast', () => {
   })
 
   it('has muted color for non-critical info', () => {
-    expect(css).toContain('--syco-text-muted: #6b7280')
+    expect(css).toContain('--syco-text-muted: #9299a6')
   })
 
   it('all signal colors are distinct from each other', () => {

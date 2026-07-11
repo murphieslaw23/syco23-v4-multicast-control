@@ -1,5 +1,5 @@
 import type { SqlJsDatabase } from '../db'
-import type { LogEntry } from '../../types/index'
+import type { LogEntry } from '../../contracts/domain'
 
 export interface LogQuery {
   limit?: number

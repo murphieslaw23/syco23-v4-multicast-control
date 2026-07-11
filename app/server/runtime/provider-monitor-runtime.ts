@@ -1,4 +1,4 @@
-import type { DestinationState } from '../../types'
+import type { DestinationState } from '../../contracts/domain'
 import type { PersistentDatabase } from '../persistent-db'
 import { getProviderAdapter } from '../provider-registry'
 import type { RuntimeEventBus } from './event-bus'

@@ -5,7 +5,7 @@ test('loads the authenticated production control shell', async ({ page }) => {
   await expect(page.locator('.syco-header')).toBeVisible()
   await expect(page.locator('.syco-brand')).toHaveText('SYCO23')
   await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
-  await expect(page.locator('[data-nav="live"]')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('navigation', { name: 'Primary' }).locator('[data-nav="live"]')).toHaveAttribute('aria-current', 'page')
 })
 
 test('exposes the operational routes', async ({ page }) => {

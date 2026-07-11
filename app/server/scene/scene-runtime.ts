@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { basename, extname, join, resolve } from 'node:path'
-import type { SceneGraph } from '../../types'
+import type { SceneGraph } from '../../contracts/domain'
 import type { PersistentDatabase } from '../persistent-db'
 import { deleteAsset, getAllAssets, getAssetById, insertAsset, type UserAssetRecord } from '../dao/userAssets'
 

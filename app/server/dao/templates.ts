@@ -1,5 +1,5 @@
 import type { SqlJsDatabase } from '../db'
-import type { SceneGraph, Template } from '../../types/index'
+import type { SceneGraph, Template } from '../../contracts/domain'
 
 const DEFAULT_SCENE: SceneGraph = { width: 1920, height: 1080, background: '#000000', layers: [] }
 

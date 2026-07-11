@@ -130,7 +130,7 @@ onMounted(() => void loadIdentity())
 
     <nav class="syco-nav" aria-label="Mobile">
       <button
-        v-for="item in items.slice(0, 6)"
+        v-for="item in items"
         :key="item.id"
         type="button"
         class="syco-nav-item"

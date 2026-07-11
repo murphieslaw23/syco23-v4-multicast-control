@@ -3,7 +3,7 @@ import type {
   OutputProfile,
   PipelineHealth,
   SceneGraph,
-} from "../../types";
+} from "../../contracts/domain";
 import type { RuntimeEventBus } from "../runtime/event-bus";
 import type { FfmpegCommand } from "./command-builder";
 import { buildFfmpegFanoutCommand } from "./command-builder";

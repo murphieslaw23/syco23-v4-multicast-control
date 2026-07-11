@@ -184,7 +184,7 @@ onMounted(() => void refresh())
       </div>
     </div>
 
-    <div class="ops-panel table-wrap">
+    <div class="ops-panel table-wrap" tabindex="0" aria-label="Output profiles table">
       <div class="panel-heading"><h2>Persisted profiles</h2><span>{{ profileState.profiles.value.length }} configured</span></div>
       <table>
         <thead><tr><th>Name</th><th>Provider</th><th>Video</th><th>Bitrates</th><th>Codec</th><th>Revision</th><th></th></tr></thead>

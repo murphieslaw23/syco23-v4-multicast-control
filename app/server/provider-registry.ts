@@ -1,4 +1,4 @@
-import type { DestinationState, OutputProfile, Provider } from '../types'
+import type { DestinationState, OutputProfile, Provider } from '../contracts/domain'
 import type { SecretStore } from './runtime/secret-store'
 
 export interface ProviderCapabilities {

@@ -41,8 +41,15 @@ const stateLabel = computed(() => {
 
 async function refreshStatus(): Promise<void> {
   try {
-    status.value = await runtimeApi.previewStatus()
-    if (status.value.playlistReady && !playlistUrl) await attachPreview()
+    const nextStatus = await runtimeApi.previewStatus()
+    // Treat an empty/malformed response as a failed refresh. This keeps the
+    // last known-good snapshot intact during logout, teardown, and transient
+    // runtime failures instead of breaking every computed/watch subscriber.
+    if (!nextStatus || typeof nextStatus !== 'object') {
+      throw new Error('Preview status response is invalid')
+    }
+    status.value = nextStatus
+    if (nextStatus.playlistReady && !playlistUrl) await attachPreview()
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : String(cause)
   }

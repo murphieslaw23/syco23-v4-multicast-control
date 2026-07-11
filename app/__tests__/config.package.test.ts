@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { spawnSync } from 'node:child_process'
 
 function text(path: string): string {
   return readFileSync(resolve(process.cwd(), path), 'utf-8')
@@ -56,7 +57,7 @@ describe('config.package', () => {
 
   it('targets the integrated production runtime in Playwright', () => {
     const config = text('playwright.config.ts')
-    expect(config).toContain("baseURL: 'http://127.0.0.1:3000'")
+    expect(config).toContain('E2E_PORT')
     expect(config).toContain('webServer')
     expect(config).toContain("SYCO_DB_DRIVER: 'native'")
   })
@@ -65,5 +66,22 @@ describe('config.package', () => {
     expect(text('vite.config.ts')).toContain('vite')
     const tsconfig = JSON.parse(text('tsconfig.json')) as { compilerOptions: Record<string, unknown> }
     expect(tsconfig.compilerOptions).toHaveProperty('target')
+  })
+
+  it('keeps server domain imports behind the canonical contracts boundary', () => {
+    const matches = spawnSync('rg', [
+      '-n',
+      String.raw`from ['"](?:\.\./)+types(?:/index)?['"]`,
+      'app/server',
+    ], { encoding: 'utf8' }).stdout.trim()
+    expect(matches).toBe('')
+    expect(text('app/contracts/domain.ts')).not.toContain("from '../types")
+    expect(text('app/types/index.ts')).toContain("from '../contracts/domain'")
+  })
+
+  it('splits the HLS runtime from the main production bundle', () => {
+    const config = text('vite.config.ts')
+    expect(config).toContain('manualChunks')
+    expect(config).toContain("'hls.js'")
   })
 })

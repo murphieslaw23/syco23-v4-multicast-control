@@ -127,7 +127,9 @@ describe('provider adapter contract matrix', () => {
       message: 'Metadata published',
     })
 
-    const request = fetchSpy.mock.calls[0][1]
+    const metadataCall = fetchSpy.mock.calls.find(([, request]) => request?.method === 'PATCH')
+    expect(metadataCall).toBeDefined()
+    const request = metadataCall?.[1]
     expect(request?.method).toBe('PATCH')
     expect(request?.headers).toEqual(expect.objectContaining({ authorization: 'Bearer provider-secret' }))
     expect(JSON.parse(String(request?.body))).toEqual({

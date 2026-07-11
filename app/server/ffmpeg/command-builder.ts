@@ -1,4 +1,4 @@
-import type { DestinationState, OutputProfile, SceneGraph } from '../../types'
+import type { DestinationState, OutputProfile, SceneGraph } from '../../contracts/domain'
 import { compileSceneFilterComplex } from '../scene/scene-runtime'
 import { getProviderAdapter } from '../provider-registry'
 

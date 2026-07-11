@@ -1,4 +1,4 @@
-import type { PipelineHealth } from '../../types'
+import type { PipelineHealth } from '../../contracts/domain'
 
 export type SupervisorState = 'idle' | 'preparing' | 'starting' | 'running' | 'stopping' | 'failed'
 

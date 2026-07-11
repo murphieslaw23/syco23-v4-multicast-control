@@ -81,7 +81,7 @@ A capability is complete only when its normal path, rejection path, restart reco
 
 - M1–M5: implemented with remaining formal release evidence and full-resource concurrency work.
 - M6: provider constraints, probes, metadata publishing and persisted transmission-kit generation implemented.
-- M7: pending architecture decision for native SQLite/WAL versus external durable database, route/composition split, SBOM/image signing, restore and rolling-upgrade drills.
+- M7: native SQLite/WAL and signed SBOM/container release automation are implemented; route/composition split, coverage remediation, provider sandbox acceptance, and restore/rolling-upgrade drills remain.
 - Detailed story and architecture findings: `docs/ARCHITECTURE_AUDIT_2026-07-10.md`.
 
 
@@ -110,4 +110,4 @@ A capability is complete only when its normal path, rejection path, restart reco
 - Transmission kits now persist provider-specific launch checklist progress.
 - Added editable kit copy, labels, metadata, launch notes, existing-kit selection and clipboard actions.
 - Fixed asynchronous operational log persistence so mutations do not resolve before their log transaction completes.
-- Remaining ordered work: native SQLite/WAL decision, provider sandbox acceptance, WCAG/mobile E2E, SBOM/image scanning, and signed release artifacts.
+- Remaining ordered work: runtime composition/route extraction, coverage remediation, provider sandbox acceptance, and staging restore/rolling-upgrade drills.

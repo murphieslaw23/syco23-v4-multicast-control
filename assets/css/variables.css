@@ -14,15 +14,15 @@
   /* Text */
   --syco-text: #ded9e2;
   --syco-text-secondary: #8a8194;
-  --syco-text-muted: #6b7280;
+  --syco-text-muted: #9299a6;
 
   /* Signal colors */
-  --syco-rust: #b7410e;
-  --syco-crimson: #8b1a1a;
-  --syco-amber: #9a7b2e;
-  --syco-copper: #6b8e6b;
-  --syco-turquoise: #4a7c7a;
-  --syco-ochre: #8b6914;
+  --syco-rust: #e26732;
+  --syco-crimson: #ef5b5b;
+  --syco-amber: #d6a94a;
+  --syco-copper: #79b67d;
+  --syco-turquoise: #62aaa6;
+  --syco-ochre: #c89b3c;
 
   /* Semantic */
   --syco-danger: var(--syco-crimson);

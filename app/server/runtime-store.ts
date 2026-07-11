@@ -1,4 +1,4 @@
-import type { DestinationState, LogEntry, OutputProfile, Template } from '../types'
+import type { DestinationState, LogEntry, OutputProfile, Template } from '../contracts/domain'
 import type { NowPlaying } from '../composables/useSycoMetadata'
 import type { StatusSnapshot } from './api-routes'
 

@@ -1,5 +1,5 @@
 import type { NowPlaying } from '../composables/useSycoMetadata'
-import type { DestinationState, OutputProfile, Template, LogEntry } from '../types/index'
+import type { DestinationState, OutputProfile, Template, LogEntry } from '../contracts/domain'
 import { getProviderAdapter } from './provider-registry'
 import { appendRuntimeLog, createRuntimeId, getRuntimeStore } from './runtime-store'
 

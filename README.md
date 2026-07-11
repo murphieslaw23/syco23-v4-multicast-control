@@ -8,7 +8,7 @@
 
 Manage RTMP destinations, monitor pipeline health, configure templates, and cast to your local preview — all from a responsive, dark-themed operator interface built with Vue 3 + Vite + TypeScript.
 
-[![Tests](https://img.shields.io/badge/tests-233%20passed-6b8e6b?style=flat-square&logo=vitest&logoColor=white)](https://github.com)
+[![Tests](https://img.shields.io/badge/tests-261%20passed-6b8e6b?style=flat-square&logo=vitest&logoColor=white)](https://github.com)
 [![TypeScript](https://img.shields.io/badge/typecheck-passing-4a7c7a?style=flat-square&logo=typescript&logoColor=white)](https://github.com)
 [![Build](https://img.shields.io/badge/build-passing-b7410e?style=flat-square&logo=vite&logoColor=white)](https://github.com)
 [![License](https://img.shields.io/badge/license-MIT-6b7280?style=flat-square)](LICENSE)

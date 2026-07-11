@@ -1,5 +1,5 @@
 import type { SqlJsDatabase } from '../db'
-import type { DestinationState } from '../../types/index'
+import type { DestinationState } from '../../contracts/domain'
 
 export function insertDestination(db: SqlJsDatabase, dest: DestinationState): void {
   db.run(
