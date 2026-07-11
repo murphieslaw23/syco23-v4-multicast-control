@@ -8,7 +8,7 @@
 
 Manage RTMP destinations, monitor pipeline health, configure templates, and cast to your local preview — all from a responsive, dark-themed operator interface built with Vue 3 + Vite + TypeScript.
 
-[![Tests](https://img.shields.io/badge/tests-223%20passed-6b8e6b?style=flat-square&logo=vitest&logoColor=white)](https://github.com)
+[![Tests](https://img.shields.io/badge/tests-233%20passed-6b8e6b?style=flat-square&logo=vitest&logoColor=white)](https://github.com)
 [![TypeScript](https://img.shields.io/badge/typecheck-passing-4a7c7a?style=flat-square&logo=typescript&logoColor=white)](https://github.com)
 [![Build](https://img.shields.io/badge/build-passing-b7410e?style=flat-square&logo=vite&logoColor=white)](https://github.com)
 [![License](https://img.shields.io/badge/license-MIT-6b7280?style=flat-square)](LICENSE)
@@ -48,11 +48,16 @@ Five viewport modes automatically detected from window dimensions:
 
 ### Template & Transmission Kit System
 
-Browse built-in templates or create custom overlays. Generate persistent, provider-specific transmission kits that combine title blocks, description blocks, launch notes, metadata labels, and destination binding.
+Browse built-in templates or create custom overlays. Generate persistent, provider-specific transmission kits with editable title and description copy, metadata, labels, destination binding, clipboard actions, and versioned launch-checklist progress.
 
 ### Provider Output Profiles
 
 Create revisioned encoder profiles from provider policy constraints, including resolution, frame rate, codec, video bitrate, audio bitrate, and keyframe policy. Profiles are validated on save and again before FFmpeg starts, then assigned directly to destinations.
+
+
+### Configuration Revision Control
+
+Administrators can compare immutable configuration snapshots and restore destinations, schedules, transmission kits, output profiles, and templates. Rollback uses `If-Match` conflict protection and creates a new audited revision instead of rewriting history.
 
 ### Real-Time Log Viewer
 
@@ -193,7 +198,7 @@ npm run preview  # Preview production build
 ### Testing
 
 ```bash
-npm run test          # 160 unit + integration tests
+npm run test          # 233 unit + integration tests
 npm run test:coverage # With coverage report (100% enforced)
 npm run e2e           # Playwright E2E (36 screenshot specs)
 ```

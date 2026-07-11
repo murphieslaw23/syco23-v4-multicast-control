@@ -102,3 +102,12 @@ A capability is complete only when its normal path, rejection path, restart reco
 - Operator clients send current revisions for update and delete operations.
 - The official test command uses a deterministic single-worker VM-isolated pool.
 - Remaining ordered work: kit checklist/editor UX, native SQLite/WAL decision, provider sandbox acceptance, WCAG/mobile E2E, and signed release artifacts.
+
+## 2026-07-11 implementation update — revision rollback and provider kits
+
+- Added an administrator revision browser with snapshot comparison and conflict-safe rollback.
+- Rollback creates a new audited revision and never rewrites immutable history.
+- Transmission kits now persist provider-specific launch checklist progress.
+- Added editable kit copy, labels, metadata, launch notes, existing-kit selection and clipboard actions.
+- Fixed asynchronous operational log persistence so mutations do not resolve before their log transaction completes.
+- Remaining ordered work: native SQLite/WAL decision, provider sandbox acceptance, WCAG/mobile E2E, SBOM/image scanning, and signed release artifacts.

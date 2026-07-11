@@ -3,23 +3,26 @@ import { computed, onMounted, ref } from 'vue'
 import { useTemplates } from '../composables/useTemplates'
 import { useTransmissionKit } from '../composables/useTransmissionKit'
 import SceneEditor from './SceneEditor.vue'
+import TransmissionKitEditor from './TransmissionKitEditor.vue'
 import type { Provider, SceneGraph, Template, DestinationState } from '../contracts/domain'
 import { runtimeApi } from '../services/runtime-api'
 
 const { templates, loading, error, load, createTemplate, updateTemplate, removeTemplate, getByProvider } = useTemplates()
-const { current: kit, generate: generateKit, reset: resetKit, loading: kitLoading, error: kitError } = useTransmissionKit()
+const { kits, load: loadKits, generate: generateKit, update: updateKit, remove: removeKit, loading: kitLoading, error: kitError } = useTransmissionKit()
 const selectedProvider = ref<Provider | 'all'>('all')
 const destinations = ref<DestinationState[]>([])
 const selectedDestinationId = ref('')
 const editing = ref<Template | null | undefined>(undefined)
 const saving = ref(false)
 const actionError = ref<string | null>(null)
+const selectedKitId = ref('')
 const providers: Provider[] = ['youtube','telegram','tiktok','twitch','instagram','mixer','mixcloud','facebook','custom-rtmp']
 const filteredTemplates = computed(() => selectedProvider.value === 'all' ? templates.value : getByProvider(selectedProvider.value))
+const activeKit = computed(() => kits.value.find((item) => item.id === selectedKitId.value) || null)
 
 onMounted(async () => {
   await load()
-  try { destinations.value = await runtimeApi.destinations(); selectedDestinationId.value = destinations.value[0]?.id || '' } catch (cause) { actionError.value = cause instanceof Error ? cause.message : String(cause) }
+  try { const [loadedDestinations,loadedKits] = await Promise.all([runtimeApi.destinations(),loadKits()]); destinations.value=loadedDestinations; selectedDestinationId.value=destinations.value[0]?.id||''; selectedKitId.value=loadedKits[0]?.id||'' } catch (cause) { actionError.value = cause instanceof Error ? cause.message : String(cause) }
 })
 async function save(payload: { name: string; provider: Provider; scene: SceneGraph }): Promise<void> {
   saving.value = true; actionError.value = null
@@ -39,8 +42,11 @@ async function createKit(template: Template): Promise<void> {
   const destination = destinations.value.find((item) => item.id === selectedDestinationId.value)
   if (!destination) { actionError.value = 'Selected destination is unavailable.'; return }
   if (destination.provider !== template.provider && template.provider !== 'custom-rtmp') { actionError.value = `Template provider ${template.provider} does not match destination provider ${destination.provider}.`; return }
-  try { await generateKit({ destinationId: destination.id, templateId: template.id }) } catch (cause) { actionError.value = cause instanceof Error ? cause.message : String(cause) }
+  try { const created=await generateKit({ destinationId: destination.id, templateId: template.id }); selectedKitId.value=created.id } catch (cause) { actionError.value = cause instanceof Error ? cause.message : String(cause) }
 }
+
+async function saveKit(patch:Parameters<typeof updateKit>[1]):Promise<void>{ if(!activeKit.value)return; actionError.value=null; try{await updateKit(activeKit.value.id,patch)}catch(cause){actionError.value=cause instanceof Error?cause.message:String(cause)} }
+async function deleteKit():Promise<void>{ if(!activeKit.value||!confirm('Delete this transmission kit?'))return; const id=activeKit.value.id; try{await removeKit(id);selectedKitId.value=kits.value[0]?.id||''}catch(cause){actionError.value=cause instanceof Error?cause.message:String(cause)} }
 function previewUrl(template: Template): string { return `/api/templates/${encodeURIComponent(template.id)}/preview.svg?v=${template.version || 1}` }
 </script>
 
@@ -62,7 +68,8 @@ function previewUrl(template: Template): string { return `/api/templates/${encod
         </article>
       </div>
       <div v-if="!loading && filteredTemplates.length===0" class="syco-empty">No templates for this provider</div>
-      <div v-if="kit" class="syco-kit-output"><h3 class="syco-kit-title">TRANSMISSION KIT</h3><div class="syco-kit-section"><span class="syco-kit-label">TITLE</span><span>{{ kit.titleBlock }}</span></div><div class="syco-kit-section"><span class="syco-kit-label">DESCRIPTION</span><span>{{ kit.descriptionBlock }}</span></div><button class="syco-btn-sm" @click="resetKit()">CLEAR</button></div>
+      <label v-if="kits.length" class="destination-select"><span>EXISTING TRANSMISSION KIT</span><select v-model="selectedKitId"><option v-for="item in kits" :key="item.id" :value="item.id">{{ item.titleBlock }} · v{{ item.version || 1 }}</option></select></label>
+      <TransmissionKitEditor v-if="activeKit" :kit="activeKit" :busy="kitLoading" @save="saveKit" @remove="deleteKit" />
     </div>
   </section>
 </template>

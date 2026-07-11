@@ -81,7 +81,7 @@ export class ControlService {
         void this.handleRuntimeEvent(event.type, event.payload);
       });
     }
-    this.log("info", "runtime", "Control service initialized");
+    await this.log("info", "runtime", "Control service initialized");
   }
 
   listDestinations(): DestinationState[] {
@@ -121,10 +121,10 @@ export class ControlService {
     });
     destination.transmissionKitId = kit.id;
     this.events.publish("transmission-kit.generated", kit);
-    this.log("success", "transmission-kit", `Generated ${destination.provider} kit for ${destination.label}`);
+    await this.log("success", "transmission-kit", `Generated ${destination.provider} kit for ${destination.label}`);
     return structuredClone(kit);
   }
-  async patchTransmissionKit(id: string, patch: Partial<Pick<TransmissionKit, "titleBlock" | "descriptionBlock" | "metadata" | "labels" | "launchNotes">>): Promise<TransmissionKit> {
+  async patchTransmissionKit(id: string, patch: Partial<Pick<TransmissionKit, "titleBlock" | "descriptionBlock" | "metadata" | "labels" | "launchNotes" | "checklist">>): Promise<TransmissionKit> {
     const current = this.getTransmissionKit(id);
     const updated: TransmissionKit = { ...current, ...patch, version: (current.version ?? 1) + 1, createdAt: current.createdAt, updatedAt: new Date().toISOString() };
     await this.persistence.transaction((db) => updateKit(db, id, updated));
@@ -182,7 +182,7 @@ export class ControlService {
       insertDestination(db, destination),
     );
     getRuntimeStore().destinations.push(destination);
-    this.log("success", "destinations", `Configured ${destination.label}`);
+    await this.log("success", "destinations", `Configured ${destination.label}`);
     this.events.publish("destination.created", destination);
     return structuredClone(destination);
   }
@@ -220,7 +220,7 @@ export class ControlService {
     if (index < 0) throw new Error("Destination not found");
     await this.persistence.transaction((db) => deleteDestination(db, id));
     const [removed] = getRuntimeStore().destinations.splice(index, 1);
-    this.log("warning", "destinations", `Removed ${removed.label}`);
+    await this.log("warning", "destinations", `Removed ${removed.label}`);
     this.events.publish("destination.deleted", { id });
   }
 
@@ -246,7 +246,7 @@ export class ControlService {
     if (errors.length) throw new ApiError("PROFILE_INVALID", errors.join("; "), 422);
     await this.persistence.transaction((db) => insertProfile(db, record));
     getRuntimeStore().profiles.push(record);
-    this.log("success", "profiles", `Created ${record.name}`);
+    await this.log("success", "profiles", `Created ${record.name}`);
     this.events.publish("profile.created", record);
     return structuredClone(record);
   }
@@ -268,7 +268,7 @@ export class ControlService {
     await this.persistence.transaction((db) => updateProfile(db, id, updated));
     const index = getRuntimeStore().profiles.findIndex((item) => item.id === id);
     if (index >= 0) getRuntimeStore().profiles[index] = updated;
-    this.log("success", "profiles", `Updated ${updated.name} to revision ${updated.version}`);
+    await this.log("success", "profiles", `Updated ${updated.name} to revision ${updated.version}`);
     this.events.publish("profile.updated", updated);
     return structuredClone(updated);
   }
@@ -279,7 +279,7 @@ export class ControlService {
     if (inUse) throw new ApiError("PROFILE_IN_USE", `Profile is assigned to ${inUse.label}`, 409);
     await this.persistence.transaction((db) => deleteProfile(db, id));
     getRuntimeStore().profiles = getRuntimeStore().profiles.filter((item) => item.id !== id);
-    this.log("warning", "profiles", `Removed ${profile.name}`);
+    await this.log("warning", "profiles", `Removed ${profile.name}`);
     this.events.publish("profile.deleted", { id });
   }
 
@@ -353,7 +353,7 @@ export class ControlService {
         pipelineHealth: "ok",
         ingestStatus: "connected",
       };
-      this.log(
+      await this.log(
         "success",
         "pipeline",
         `Started ${session.title} with ${command.outputCount} output(s)`,
@@ -391,7 +391,7 @@ export class ControlService {
       });
       this.activeRequest = null;
       this.activeDestinationIds = [];
-      this.log("info", "pipeline", "Pipeline stopped");
+      await this.log("info", "pipeline", "Pipeline stopped");
       return this.workers.aggregateSnapshot();
     });
   }
@@ -407,7 +407,7 @@ export class ControlService {
           "No active pipeline request is available for recovery",
         );
       await this.workers.stop();
-      this.log("warning", "watchdog", `Restarting pipeline: ${reason}`);
+      await this.log("warning", "watchdog", `Restarting pipeline: ${reason}`);
       const selected = request.destinationIds?.length
         ? getRuntimeStore().destinations.filter((item) =>
             request.destinationIds?.includes(item.id),
@@ -477,7 +477,7 @@ export class ControlService {
         }),
       );
     }
-    this.log("error", "watchdog", reason);
+    await this.log("error", "watchdog", reason);
   }
 
   private async handleRuntimeEvent(
@@ -633,14 +633,13 @@ export class ControlService {
     level: "info" | "warning" | "error" | "success" | "debug",
     source: string,
     message: string,
-  ): void {
+  ): Promise<void> {
     const entry = appendRuntimeLog(level, source, message);
-    void this.persistence.transaction((db) =>
+    return this.persistence.transaction((db) =>
       db.run(
         "INSERT INTO log_entries (id,timestamp,level,source,message) VALUES (?,?,?,?,?)",
         [entry.id, entry.timestamp, entry.level, entry.source, entry.message],
       ),
-    );
-    this.events.publish("log.created", entry);
+    ).then(() => { this.events.publish("log.created", entry); });
   }
 }

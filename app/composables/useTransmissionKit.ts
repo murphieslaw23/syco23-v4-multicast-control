@@ -14,7 +14,7 @@ export interface UseTransmissionKitReturn {
   error: ComputedRef<string | null>
   load: () => Promise<TransmissionKit[]>
   generate: (input: { destinationId: string; templateId?: string; title?: string; artist?: string; show?: string; publicUrl?: string }) => Promise<TransmissionKit>
-  update: (id: string, patch: Partial<Pick<TransmissionKit, 'titleBlock' | 'descriptionBlock' | 'metadata' | 'labels' | 'launchNotes'>>) => Promise<TransmissionKit>
+  update: (id: string, patch: Partial<Pick<TransmissionKit, 'titleBlock' | 'descriptionBlock' | 'metadata' | 'labels' | 'launchNotes' | 'checklist'>>) => Promise<TransmissionKit>
   remove: (id: string) => Promise<void>
   reset: () => void
 }
@@ -45,7 +45,7 @@ export function useTransmissionKit(): UseTransmissionKitReturn {
     } finally { loading.value = false }
   }
 
-  async function update(id: string, patch: Partial<Pick<TransmissionKit, 'titleBlock' | 'descriptionBlock' | 'metadata' | 'labels' | 'launchNotes'>>): Promise<TransmissionKit> {
+  async function update(id: string, patch: Partial<Pick<TransmissionKit, 'titleBlock' | 'descriptionBlock' | 'metadata' | 'labels' | 'launchNotes' | 'checklist'>>): Promise<TransmissionKit> {
     const current = kits.value.find((item) => item.id === id)
     const updated = await runtimeApi.updateTransmissionKit(id, patch, current?.version)
     const index = kits.value.findIndex((item) => item.id === id)

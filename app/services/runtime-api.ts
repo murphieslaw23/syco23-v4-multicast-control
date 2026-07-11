@@ -14,6 +14,8 @@ export interface ProviderMonitorEvent { id:string; destinationId:string; timesta
 export interface RetentionResult { [table:string]: number }
 export interface SystemMetrics { timestamp:string; uptimeSeconds:number; process:{pid:number;rssBytes:number;heapUsedBytes:number;heapTotalBytes:number}; memory:{totalBytes:number;freeBytes:number;usedPercent:number}; cpu:{cores:number;load1:number;load5:number;load15:number}; disk:{path:string;totalBytes:number;freeBytes:number;usedPercent:number}|null; network:{receivedBytes:number;transmittedBytes:number}|null; eventLoop:{meanMs:number;maxMs:number;p99Ms:number} }
 export interface WorkerSnapshot { id?:string; destinationId?:string; state:string; pid:number|null; health?:string; restartCount:number; lastError:string|null; cooldownUntil?:string|null; metrics?:Record<string,number> }
+export type RevisionResource = 'destination'|'schedule'|'transmission-kit'|'profile'|'template'
+export interface ConfigurationRevision { id:string; revision:number; actor:string; createdAt:string; snapshot:Record<string,unknown> }
 
 export interface ProviderCapabilities { protocols: Array<'rtmp'|'rtmps'>; metadata:boolean; platformAck:boolean; hlsPlayback:boolean; manualSetup:boolean }
 export interface ProviderProfilePolicy { widths:number[]; heights:number[]; fps:number[]; videoBitrateKbps:{min:number;max:number}; audioBitrateKbps:{min:number;max:number}; codecs:string[]; keyframeIntervalSeconds:number; preferredEndpoint?:string }
@@ -94,6 +96,8 @@ export const runtimeApi = {
   providerMonitorEvents: (destinationId:string) => request<ProviderMonitorEvent[]>(`/api/provider-monitor/${encodeURIComponent(destinationId)}/events`),
   systemMetrics: () => request<SystemMetrics>('/api/system/metrics'),
   runRetention: () => request<RetentionResult>('/api/retention/run',{method:'POST'}),
+  revisions: (resource:RevisionResource,id:string) => request<ConfigurationRevision[]>(`/api/revisions/${encodeURIComponent(resource)}/${encodeURIComponent(id)}`),
+  restoreRevision: (resource:RevisionResource,id:string,revision:number,currentVersion?:number) => request<Record<string,unknown>>(`/api/revisions/${encodeURIComponent(resource)}/${encodeURIComponent(id)}/${revision}/restore`,{method:'POST',headers:currentVersion?{'if-match':`"${currentVersion}"`}:undefined}),
   createDestination: (input: DestinationState) => request<DestinationState>('/api/destinations',{method:'POST',body:JSON.stringify(input)}),
   updateDestination: (id:string,patch:Partial<DestinationState>,version?:number) => request<DestinationState>(`/api/destinations/${encodeURIComponent(id)}`,{method:'PATCH',headers:version?{'if-match':`"${version}"`}:undefined,body:JSON.stringify(patch)}),
   deleteDestination: (id:string,version?:number) => request<void>(`/api/destinations/${encodeURIComponent(id)}`,{method:'DELETE',headers:version?{'if-match':`"${version}"`}:undefined}),
@@ -107,7 +111,7 @@ export const runtimeApi = {
   deleteProfile: (id:string) => request<void>(`/api/profiles/${encodeURIComponent(id)}`,{method:'DELETE'}),
   transmissionKits: () => request<{items:TransmissionKit[];total:number}>('/api/transmission-kits'),
   generateTransmissionKit: (input: {destinationId:string;templateId?:string;title?:string;artist?:string;show?:string;publicUrl?:string}) => request<TransmissionKit>('/api/transmission-kits/generate',{method:'POST',body:JSON.stringify(input)}),
-  updateTransmissionKit: (id:string,patch:Partial<Pick<TransmissionKit,'titleBlock'|'descriptionBlock'|'metadata'|'labels'|'launchNotes'>>,version?:number) => request<TransmissionKit>(`/api/transmission-kits/${encodeURIComponent(id)}`,{method:'PATCH',headers:version?{'if-match':`"${version}"`}:undefined,body:JSON.stringify(patch)}),
+  updateTransmissionKit: (id:string,patch:Partial<Pick<TransmissionKit,'titleBlock'|'descriptionBlock'|'metadata'|'labels'|'launchNotes'|'checklist'>>,version?:number) => request<TransmissionKit>(`/api/transmission-kits/${encodeURIComponent(id)}`,{method:'PATCH',headers:version?{'if-match':`"${version}"`}:undefined,body:JSON.stringify(patch)}),
   deleteTransmissionKit: (id:string,version?:number) => request<void>(`/api/transmission-kits/${encodeURIComponent(id)}`,{method:'DELETE',headers:version?{'if-match':`"${version}"`}:undefined}),
   templates: () => request<Template[]>('/api/templates'),
   createTemplate: (input: { name: string; provider: Provider; scene: SceneGraph; isCustom?: boolean }) => request<Template>('/api/templates', { method: 'POST', body: JSON.stringify(input) }),

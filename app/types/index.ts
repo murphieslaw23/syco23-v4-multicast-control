@@ -143,6 +143,13 @@ export interface Template {
   updatedAt?: string
 }
 
+export interface TransmissionChecklistItem {
+  id: string
+  label: string
+  required: boolean
+  completed: boolean
+}
+
 export interface TransmissionKit {
   id: string
   destinationId: string
@@ -151,6 +158,7 @@ export interface TransmissionKit {
   metadata: Record<string, string>
   labels: string[]
   launchNotes: string
+  checklist: TransmissionChecklistItem[]
   version?: number
   createdAt?: string
   updatedAt?: string

@@ -96,3 +96,16 @@ describe('revisioned mutable resources', () => {
     await expect(handleTransmissionKitRoutes(deps.common)).rejects.toMatchObject({ code: 'REVISION_CONFLICT', status: 409 })
   })
 })
+
+describe('transmission kit checklist persistence', () => {
+  it('persists checklist progress as a revisioned kit update', async () => {
+    await service.createDestination(destination)
+    const kit = await service.generateTransmissionKit({ destinationId: destination.id, title: 'Checklist test' })
+    const first = kit.checklist?.[0]
+    expect(first).toBeDefined()
+    const checklist = (kit.checklist || []).map((item,index) => index === 0 ? { ...item, completed:true } : item)
+    const updated = await service.patchTransmissionKit(kit.id, { checklist })
+    expect(updated.version).toBe(2)
+    expect(service.getTransmissionKit(kit.id).checklist?.[0]?.completed).toBe(true)
+  })
+})

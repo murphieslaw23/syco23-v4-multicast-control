@@ -31,7 +31,7 @@ Audit basis: `IMPLEMENTATION_MASTERPLAN.md`, the V4.1 transmission user stories,
 
 ### Medium priority
 
-5. **Optimistic concurrency** — templates, profiles, destinations, schedules and transmission kits now support ETags, immutable revisions and stale-write rejection.
+5. **Optimistic concurrency and rollback** — templates, profiles, destinations, schedules and transmission kits support ETags, immutable revisions, comparison, conflict-safe rollback and stale-write rejection.
 6. **Provider acceptance gap** — adapters normalize HTTP responses, but real provider sandbox tests and OAuth/webhook workflows remain incomplete.
 7. **Release evidence gap** — CI exists, but signed artifacts, SBOM, image scan, restore drill and rolling upgrade evidence remain unfinished.
 8. **Cross-project scope** — webplayer, AzuraCast infrastructure and Telegram bots are separate projects and are not implemented in this repository.
@@ -39,8 +39,6 @@ Audit basis: `IMPLEMENTATION_MASTERPLAN.md`, the V4.1 transmission user stories,
 ## Ordered next work
 
 1. Continue extracting runtime route groups and move dependency construction into a composition root without changing API behavior.
-2. Add configuration revision comparison and rollback controls to the operator UI.
-3. Add provider-specific kit editing, copy actions and launch checklist status.
-4. Execute native SQLite/WAL evaluation and migration spike.
-5. Add WCAG AA automation, mobile Playwright workflows and provider sandbox contract tests.
-6. Add SBOM, image scanning, signed release artifacts and documented restore/upgrade drills.
+2. Execute native SQLite/WAL evaluation and migration spike.
+3. Add WCAG AA automation, mobile Playwright workflows and provider sandbox contract tests.
+4. Add SBOM, image scanning, signed release artifacts and documented restore/upgrade drills.

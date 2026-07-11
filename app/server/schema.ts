@@ -72,7 +72,8 @@ CREATE TABLE IF NOT EXISTS transmission_kits (
   launch_notes TEXT NOT NULL DEFAULT '',
   version INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT '',
-  updated_at TEXT NOT NULL DEFAULT ''
+  updated_at TEXT NOT NULL DEFAULT '',
+  checklist TEXT NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS schedules (

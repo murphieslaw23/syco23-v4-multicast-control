@@ -44,6 +44,7 @@ export class PersistentDatabase {
     if (!kitColumns.includes('version')) db.run('ALTER TABLE transmission_kits ADD COLUMN version INTEGER NOT NULL DEFAULT 1')
     if (!kitColumns.includes('created_at')) db.run("ALTER TABLE transmission_kits ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
     if (!kitColumns.includes('updated_at')) db.run("ALTER TABLE transmission_kits ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
+    if (!kitColumns.includes('checklist')) db.run("ALTER TABLE transmission_kits ADD COLUMN checklist TEXT NOT NULL DEFAULT '[]'")
     const currentScheduleColumns = db.exec('PRAGMA table_info(schedules)')[0]?.values.map(row => String(row[1])) ?? []
     if (!currentScheduleColumns.includes('version')) db.run('ALTER TABLE schedules ADD COLUMN version INTEGER NOT NULL DEFAULT 1')
     if (!currentScheduleColumns.includes('created_at')) db.run("ALTER TABLE schedules ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")

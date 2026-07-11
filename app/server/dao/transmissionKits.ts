@@ -3,8 +3,8 @@ import type { TransmissionKit, Provider, Template } from '../../contracts/domain
 
 export function insertKit(db: SqlJsDatabase, kit: TransmissionKit): void {
   db.run(
-    'INSERT INTO transmission_kits (id, destination_id, title_block, description_block, metadata, labels, launch_notes, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [kit.id, kit.destinationId, kit.titleBlock, kit.descriptionBlock, JSON.stringify(kit.metadata), JSON.stringify(kit.labels), kit.launchNotes, kit.version ?? 1, kit.createdAt ?? new Date().toISOString(), kit.updatedAt ?? new Date().toISOString()]
+    'INSERT INTO transmission_kits (id, destination_id, title_block, description_block, metadata, labels, launch_notes, version, created_at, updated_at, checklist) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [kit.id, kit.destinationId, kit.titleBlock, kit.descriptionBlock, JSON.stringify(kit.metadata), JSON.stringify(kit.labels), kit.launchNotes, kit.version ?? 1, kit.createdAt ?? new Date().toISOString(), kit.updatedAt ?? new Date().toISOString(), JSON.stringify(kit.checklist || [])]
   )
 }
 
@@ -16,6 +16,7 @@ export function updateKit(db: SqlJsDatabase, id: string, patch: Partial<Transmis
   if ('metadata' in patch) { fields.push('metadata = ?'); values.push(JSON.stringify(patch.metadata)) }
   if ('labels' in patch) { fields.push('labels = ?'); values.push(JSON.stringify(patch.labels)) }
   if ('launchNotes' in patch) { fields.push('launch_notes = ?'); values.push(patch.launchNotes) }
+  if ('checklist' in patch) { fields.push('checklist = ?'); values.push(JSON.stringify(patch.checklist || [])) }
   if ('version' in patch) { fields.push('version = ?'); values.push(patch.version) }
   if ('updatedAt' in patch) { fields.push('updated_at = ?'); values.push(patch.updatedAt) }
   if (fields.length === 0) return
@@ -57,6 +58,7 @@ function rowToKit(row: unknown[]): TransmissionKit {
     version: Number(row[7] ?? 1),
     createdAt: String(row[8] ?? ''),
     updatedAt: String(row[9] ?? ''),
+    checklist: JSON.parse(String(row[10] || '[]')),
   }
 }
 
@@ -71,18 +73,21 @@ export interface GenerateTransmissionKitInput {
   publicUrl?: string
 }
 
-const providerCopy: Record<Provider, { labels: string[]; launchNotes: string }> = {
-  youtube: { labels: ['youtube', 'livestream', 'syco23'], launchNotes: 'Verify the YouTube control-room preview, latency mode, category, thumbnail, and public visibility before arming.' },
-  telegram: { labels: ['telegram', 'vertical', 'syco23'], launchNotes: 'Confirm the Telegram destination supports the selected orientation and publish the listener access message after provider acknowledgement.' },
-  tiktok: { labels: ['tiktok', 'vertical', 'syco23'], launchNotes: 'Confirm mobile-safe framing, platform eligibility, and the live preview before publishing.' },
-  twitch: { labels: ['twitch', 'live', 'syco23'], launchNotes: 'Confirm category, title, moderation state, and playback acknowledgement before announcing the transmission.' },
-  instagram: { labels: ['instagram', 'vertical', 'syco23'], launchNotes: 'Confirm portrait framing and platform-side live readiness; Instagram may require manual setup.' },
-  mixer: { labels: ['mixer', 'legacy', 'syco23'], launchNotes: 'This provider is retained for compatibility. Verify the endpoint is active before arming.' },
-  mixcloud: { labels: ['mixcloud', 'live', 'syco23'], launchNotes: 'Confirm Mixcloud Live title, rights metadata, and playback acknowledgement.' },
-  facebook: { labels: ['facebook', 'live', 'syco23'], launchNotes: 'Confirm destination page, visibility, title, and provider acknowledgement before publishing.' },
-  'custom-rtmp': { labels: ['rtmp', 'live', 'syco23'], launchNotes: 'Verify the custom RTMP endpoint, secret reference, codec profile, and public playback URL.' },
-  local: { labels: ['local', 'preview', 'syco23'], launchNotes: 'Use this kit for local validation only; no external provider acknowledgement is expected.' },
+type ProviderKitCopy = { labels:string[]; launchNotes:string; checklist:Array<{id:string;label:string;required?:boolean}> }
+
+const providerCopy: Record<Provider, ProviderKitCopy> = {
+  youtube: { labels:['youtube','livestream','syco23'], launchNotes:'Verify the YouTube control-room preview, latency mode, category, thumbnail, and public visibility before arming.', checklist:[{id:'provider-preview',label:'Verify the YouTube control-room preview is receiving video and audio.'},{id:'metadata',label:'Confirm title, description, category, and thumbnail.'},{id:'visibility',label:'Confirm visibility and latency mode.'},{id:'playback',label:'Confirm public playback and provider acknowledgment.'}] },
+  telegram: { labels:['telegram','vertical','syco23'], launchNotes:'Confirm the Telegram destination supports the selected orientation and publish the listener access message after provider acknowledgement.', checklist:[{id:'provider-preview',label:'Verify portrait framing and audio in the Telegram preview.'},{id:'access-message',label:'Prepare the listener access message.'},{id:'playback',label:'Confirm provider acknowledgment before publishing.'}] },
+  tiktok: { labels:['tiktok','vertical','syco23'], launchNotes:'Confirm mobile-safe framing, platform eligibility, and the live preview before publishing.', checklist:[{id:'provider-preview',label:'Verify the TikTok live preview.'},{id:'eligibility',label:'Confirm account live eligibility and stream key validity.'},{id:'safe-area',label:'Check portrait safe areas and metadata.'}] },
+  twitch: { labels:['twitch','live','syco23'], launchNotes:'Confirm category, title, moderation state, and playback acknowledgement before announcing the transmission.', checklist:[{id:'provider-preview',label:'Verify Twitch Inspector or dashboard preview.'},{id:'metadata',label:'Confirm title, category, and moderation state.'},{id:'playback',label:'Confirm public playback before announcement.'}] },
+  instagram: { labels:['instagram','vertical','syco23'], launchNotes:'Confirm portrait framing and platform-side live readiness; Instagram may require manual setup.', checklist:[{id:'provider-preview',label:'Verify portrait preview and audio.'},{id:'manual-setup',label:'Complete required platform-side setup.'},{id:'safe-area',label:'Check captions and safe areas.'}] },
+  mixer: { labels:['mixer','legacy','syco23'], launchNotes:'This provider is retained for compatibility. Verify the endpoint is active before arming.', checklist:[{id:'provider-preview',label:'Verify the compatibility endpoint is active.'},{id:'playback',label:'Confirm output playback.'}] },
+  mixcloud: { labels:['mixcloud','live','syco23'], launchNotes:'Confirm Mixcloud Live title, rights metadata, and playback acknowledgement.', checklist:[{id:'provider-preview',label:'Verify Mixcloud Live preview.'},{id:'rights',label:'Confirm title and rights metadata.'},{id:'playback',label:'Confirm public playback.'}] },
+  facebook: { labels:['facebook','live','syco23'], launchNotes:'Confirm destination page, visibility, title, and provider acknowledgement before publishing.', checklist:[{id:'provider-preview',label:'Verify Facebook Live preview.'},{id:'destination',label:'Confirm destination page and visibility.'},{id:'metadata',label:'Confirm title and description.'},{id:'playback',label:'Confirm provider acknowledgment.'}] },
+  'custom-rtmp': { labels:['rtmp','live','syco23'], launchNotes:'Verify the custom RTMP endpoint, secret reference, codec profile, and public playback URL.', checklist:[{id:'provider-preview',label:'Verify the receiving endpoint shows audio and video.'},{id:'endpoint',label:'Confirm endpoint and secret reference.'},{id:'codec',label:'Confirm codec and bitrate profile.'},{id:'playback',label:'Confirm the public playback URL when available.'}] },
+  local: { labels:['local','preview','syco23'], launchNotes:'Use this kit for local validation only; no external provider acknowledgement is expected.', checklist:[{id:'provider-preview',label:'Verify the local preview contains audio and video.'},{id:'metadata',label:'Confirm local overlay metadata.'}] },
 }
+
 
 export function generateKit(input: GenerateTransmissionKitInput): TransmissionKit {
   const title = input.title?.trim() || input.show?.trim() || 'SYSTEM CORRUPT — LIVE TRANSMISSION'
@@ -118,5 +123,6 @@ Listen / watch: ${input.publicUrl}` : ''
     },
     labels: providerCopy[provider].labels,
     launchNotes: providerCopy[provider].launchNotes,
+    checklist: providerCopy[provider].checklist.map((item) => ({ id:item.id, label:item.label, required:item.required !== false, completed:false })),
   }
 }

@@ -48,6 +48,7 @@ import { handleProfileRoutes } from "./http/routes/profiles";
 import { handleDestinationRoutes } from "./http/routes/destinations";
 import { handleScheduleRoutes } from "./http/routes/schedules";
 import { handleTransmissionKitRoutes } from "./http/routes/transmission-kits";
+import { handleConfigurationRevisionRoutes } from "./http/routes/configuration-revisions";
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "0.0.0.0";
@@ -616,24 +617,7 @@ async function route(
       );
       return json(response, 204, null, requestId);
     }
-    const revisionMatch = url.pathname.match(
-      /^\/api\/revisions\/([^/]+)\/([^/]+)$/,
-    );
-    if (request.method === "GET" && revisionMatch) {
-      requireRole(context, "admin");
-      return json(
-        response,
-        200,
-        {
-          ok: true,
-          data: operations.listRevisions(
-            decodeURIComponent(revisionMatch[1]),
-            decodeURIComponent(revisionMatch[2]),
-          ),
-        },
-        requestId,
-      );
-    }
+    if (await handleConfigurationRevisionRoutes({ request, response, url, context, requestId, service, operations, sendJson: json, requireRole, audited })) return;
     if (request.method === "GET" && url.pathname === "/api/me")
       return json(response, 200, { ok: true, data: context });
     if (request.method === "POST" && url.pathname === "/api/events/ticket")
@@ -1293,7 +1277,7 @@ async function main(): Promise<void> {
           source: "http",
           message: `${request.method || "GET"} ${path} ${response.statusCode} ${durationMs.toFixed(1)}ms requestId=${String(response.getHeader("x-request-id") || "")}`,
         }),
-      );
+      ).catch(() => { /* shutdown may close persistence after the response completes */ });
     });
     void route(request, response);
   });

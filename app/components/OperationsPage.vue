@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { runtimeApi, type AuditEntry, type BackupRecord, type CurrentUser, type Incident, type ProviderProbeSnapshot, type RuntimeLog, type RuntimeSession, type ScheduleJob, type SystemMetrics, type WorkerSnapshot } from '../services/runtime-api'
 import type { AppRoute } from '../composables/useAppRouter'
 import type { DestinationState, OutputProfile } from '../types'
+import RevisionHistoryPanel from './RevisionHistoryPanel.vue'
 
 const props = defineProps<{ route: AppRoute }>()
 const user = ref<CurrentUser|null>(null)
@@ -119,6 +120,7 @@ onMounted(()=>void refresh())
 
  <template v-else-if="route==='about'">
   <div class="ops-grid ops-grid--split"><div class="ops-panel"><h2>Runtime</h2><dl><dt>Product</dt><dd>SYCO23 Multicast Control</dd><dt>Role</dt><dd>{{ user?.role }}</dd><dt>Actor</dt><dd>{{ user?.actor }}</dd><dt>Architecture</dt><dd>Vue control UI + isolated Node/FFmpeg runtime</dd></dl></div><div v-if="isAdmin" class="ops-panel"><h2>Database backups</h2><button class="control-button control-button--primary" @click="backup">Create backup</button><button class="control-button" @click="runRetention">Run retention</button><p v-if="retentionResult" class="muted">Removed {{ Object.values(retentionResult).reduce((a,b)=>a+b,0) }} expired records.</p><article v-for="item in backups" :key="item.id" class="data-card"><span class="mono">{{ item.id }}</span><button class="danger" @click="restore(item.id)">Restore</button></article></div></div>
+  <RevisionHistoryPanel v-if="isAdmin" />
   <div v-if="isAdmin" class="ops-panel table-wrap"><h2>Audit trail</h2><table><thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Resource</th><th>Outcome</th></tr></thead><tbody><tr v-for="item in audit" :key="item.id"><td>{{ new Date(item.timestamp).toLocaleString() }}</td><td>{{ item.actor }}</td><td>{{ item.action }}</td><td>{{ item.resource }}</td><td>{{ item.outcome }}</td></tr></tbody></table></div>
  </template>
 </section>

@@ -20,11 +20,13 @@ describe('provider transmission kits', () => {
     expect(kit.labels).toEqual(expect.arrayContaining(['youtube', 'syco23']))
     expect(kit.launchNotes).toContain('YouTube')
     expect(kit.metadata.templateId).toBe('scene-1')
+    expect(kit.checklist).toEqual(expect.arrayContaining([expect.objectContaining({ id:'provider-preview', required:true, completed:false })]))
   })
 
   it('uses safe defaults without metadata', () => {
     const kit = generateKit({ destinationId: 'custom', provider: 'custom-rtmp' })
     expect(kit.titleBlock).toContain('SYSTEM CORRUPT')
     expect(kit.launchNotes).toContain('RTMP')
+    expect(kit.checklist.every((item) => item.completed === false)).toBe(true)
   })
 })
