@@ -53,6 +53,9 @@ export interface DestinationState {
   capabilities: string[]
   transmissionKitId: string | null
   notes: string
+  version?: number
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface SycoAppState {
@@ -148,4 +151,7 @@ export interface TransmissionKit {
   metadata: Record<string, string>
   labels: string[]
   launchNotes: string
+  version?: number
+  createdAt?: string
+  updatedAt?: string
 }

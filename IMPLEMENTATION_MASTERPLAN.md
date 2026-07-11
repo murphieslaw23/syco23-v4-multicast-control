@@ -93,3 +93,12 @@ A capability is complete only when its normal path, rejection path, restart reco
 - Added a provider-policy-driven operator editor and destination profile assignment.
 - Extracted profile HTTP handling from the runtime entrypoint into `app/server/http/routes/profiles.ts`.
 - Remaining concurrency work: destinations, schedules and transmission kits.
+
+## 2026-07-11 implementation update — resource concurrency and route extraction
+
+- Destinations, schedules and transmission kits now persist versions and timestamps.
+- All three resources support ETag/If-Match conflict detection and immutable configuration revisions.
+- Their HTTP handlers are extracted from `runtime-server.ts` into dependency-injected route modules.
+- Operator clients send current revisions for update and delete operations.
+- The official test command uses a deterministic single-worker VM-isolated pool.
+- Remaining ordered work: kit checklist/editor UX, native SQLite/WAL decision, provider sandbox acceptance, WCAG/mobile E2E, and signed release artifacts.

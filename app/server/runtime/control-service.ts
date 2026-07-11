@@ -104,7 +104,7 @@ export class ControlService {
     if (template && template.provider !== destination.provider && template.provider !== "custom-rtmp") {
       throw new ApiError("TEMPLATE_PROVIDER_MISMATCH", `Template ${template.name} is not valid for ${destination.provider}`, 422);
     }
-    const kit = generateKit({
+    const generated = generateKit({
       ...input,
       provider: destination.provider,
       destinationLabel: destination.label,
@@ -113,6 +113,8 @@ export class ControlService {
       artist: input.artist || getRuntimeStore().metadata.artist,
       show: input.show || getRuntimeStore().metadata.show || undefined,
     });
+    const now = new Date().toISOString();
+    const kit: TransmissionKit = { ...generated, version: 1, createdAt: now, updatedAt: now };
     await this.persistence.transaction((db) => {
       insertKit(db, kit);
       updateDestination(db, destination.id, { transmissionKitId: kit.id });
@@ -123,8 +125,9 @@ export class ControlService {
     return structuredClone(kit);
   }
   async patchTransmissionKit(id: string, patch: Partial<Pick<TransmissionKit, "titleBlock" | "descriptionBlock" | "metadata" | "labels" | "launchNotes">>): Promise<TransmissionKit> {
-    this.getTransmissionKit(id);
-    await this.persistence.transaction((db) => updateKit(db, id, patch));
+    const current = this.getTransmissionKit(id);
+    const updated: TransmissionKit = { ...current, ...patch, version: (current.version ?? 1) + 1, createdAt: current.createdAt, updatedAt: new Date().toISOString() };
+    await this.persistence.transaction((db) => updateKit(db, id, updated));
     const kit = this.getTransmissionKit(id);
     this.events.publish("transmission-kit.updated", kit);
     return kit;
@@ -165,7 +168,8 @@ export class ControlService {
   async removeTemplate(id:string):Promise<void> { this.getTemplate(id); await this.persistence.transaction(db=>deleteTemplate(db,id)); getRuntimeStore().templates=getRuntimeStore().templates.filter(item=>item.id!==id); this.events.publish("template.deleted",{id}); }
 
   async createDestination(input: DestinationState): Promise<DestinationState> {
-    const destination = { ...input, id: input.id || createRuntimeId("dst") };
+    const now = new Date().toISOString();
+    const destination = { ...input, id: input.id || createRuntimeId("dst"), version: 1, createdAt: now, updatedAt: now };
     const errors = getProviderAdapter(destination.provider).validate(
       destination,
     );
@@ -195,11 +199,14 @@ export class ControlService {
       ...getRuntimeStore().destinations[index],
       ...patch,
       id,
+      version: (getRuntimeStore().destinations[index].version ?? 1) + 1,
+      createdAt: getRuntimeStore().destinations[index].createdAt,
+      updatedAt: new Date().toISOString(),
     };
     const errors = getProviderAdapter(candidate.provider).validate(candidate);
     if (errors.length) throw new Error(errors.join("; "));
     await this.persistence.transaction((db) =>
-      updateDestination(db, id, patch),
+      updateDestination(db, id, candidate),
     );
     getRuntimeStore().destinations[index] = candidate;
     this.events.publish("destination.updated", candidate);

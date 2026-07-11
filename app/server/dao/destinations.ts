@@ -3,8 +3,8 @@ import type { DestinationState } from '../../types/index'
 
 export function insertDestination(db: SqlJsDatabase, dest: DestinationState): void {
   db.run(
-    `INSERT INTO destinations (id, provider, label, protocol, endpoint_url, stream_key_ref, status, health, last_handshake_at, last_error, video_profile, audio_profile, monitor_mode, hls_playback_url, provider_ack_url, provider_metadata_url, provider_api_secret_ref, requires_manual_setup, transmission_kit_id, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO destinations (id, provider, label, protocol, endpoint_url, stream_key_ref, status, health, last_handshake_at, last_error, video_profile, audio_profile, monitor_mode, hls_playback_url, provider_ack_url, provider_metadata_url, provider_api_secret_ref, requires_manual_setup, transmission_kit_id, notes, version, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       dest.id,
       dest.provider,
@@ -26,6 +26,9 @@ export function insertDestination(db: SqlJsDatabase, dest: DestinationState): vo
       dest.requiresManualPlatformSetup ? 1 : 0,
       dest.transmissionKitId,
       dest.notes,
+      dest.version ?? 1,
+      dest.createdAt ?? new Date().toISOString(),
+      dest.updatedAt ?? new Date().toISOString(),
     ]
   )
 }
@@ -54,6 +57,9 @@ export function updateDestination(db: SqlJsDatabase, id: string, patch: Partial<
     requiresManualPlatformSetup: { column: 'requires_manual_setup', transform: (value) => value ? 1 : 0 },
     transmissionKitId: { column: 'transmission_kit_id', transform: (value) => value },
     notes: { column: 'notes', transform: (value) => value },
+    version: { column: 'version', transform: (value) => value },
+    createdAt: { column: 'created_at', transform: (value) => value },
+    updatedAt: { column: 'updated_at', transform: (value) => value },
   }
 
   for (const [key, mapping] of Object.entries(fieldMap)) {
@@ -108,5 +114,8 @@ function rowToDestination(row: unknown[]): DestinationState {
     transmissionKitId: (row[18] as string) ?? null,
     notes: row[19] as string,
     capabilities: [],
+    version: Number(row[20] ?? 1),
+    createdAt: String(row[21] ?? ''),
+    updatedAt: String(row[22] ?? ''),
   }
 }

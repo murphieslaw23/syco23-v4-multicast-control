@@ -1,37 +1,28 @@
-import type { UiMode, LayoutState } from '../types/index'
+import type { LayoutState } from '../types/index'
 
-export function detectLayout(): LayoutState {
-  if (typeof window === 'undefined') {
-    return { mode: 'landscape' }
-  }
+export interface ViewportDimensions {
+  innerWidth: number
+  innerHeight: number
+}
 
-  const width = window.innerWidth
-  const height = window.innerHeight
+export function detectLayout(viewport: ViewportDimensions | null = typeof window === 'undefined' ? null : window): LayoutState {
+  if (!viewport) return { mode: 'landscape' }
 
-  if (width >= 1920 && height >= 1080) {
-    return { mode: 'tv' }
-  }
+  const width = viewport.innerWidth
+  const height = viewport.innerHeight
 
-  if (width > height) {
-    return width >= 1024 ? { mode: 'tablet' } : { mode: 'landscape' }
-  }
-
+  if (width >= 1920 && height >= 1080) return { mode: 'tv' }
+  if (width > height) return width >= 1024 ? { mode: 'tablet' } : { mode: 'landscape' }
   return { mode: 'portrait' }
 }
 
 export function watchLayout(
   getState: (state: LayoutState) => LayoutState,
   onChange: (state: LayoutState) => void,
+  target: Window | null = typeof window === 'undefined' ? null : window,
 ): () => void {
-  if (typeof window === 'undefined') {
-    return () => {}
-  }
-
-  const handler = () => {
-    const state = getState(detectLayout())
-    onChange(state)
-  }
-
-  window.addEventListener('resize', handler)
-  return () => window.removeEventListener('resize', handler)
+  if (!target) return () => {}
+  const handler = () => onChange(getState(detectLayout(target)))
+  target.addEventListener('resize', handler)
+  return () => target.removeEventListener('resize', handler)
 }

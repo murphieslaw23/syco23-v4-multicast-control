@@ -20,7 +20,6 @@ import { ControlService } from "./runtime/control-service";
 import {
   OperationsStore,
   type Role,
-  type ScheduleJob,
 } from "./runtime/operations";
 import { SchedulerRuntime } from "./runtime/scheduler";
 import { ApiError, asApiError } from "./runtime/errors";
@@ -46,6 +45,9 @@ import { insertLog } from "./dao/logs";
 import { AuthService } from "./runtime/auth-service";
 import { RateLimiter } from "./runtime/rate-limiter";
 import { handleProfileRoutes } from "./http/routes/profiles";
+import { handleDestinationRoutes } from "./http/routes/destinations";
+import { handleScheduleRoutes } from "./http/routes/schedules";
+import { handleTransmissionKitRoutes } from "./http/routes/transmission-kits";
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "0.0.0.0";
@@ -662,36 +664,7 @@ async function route(
         { ok: true, data: service.listTemplates() },
         requestId,
       );
-    if (request.method === "GET" && url.pathname === "/api/transmission-kits") {
-      requireRole(context, "viewer");
-      const items = service.listTransmissionKits();
-      return json(response, 200, { ok: true, data: { items, total: items.length } }, requestId);
-    }
-    if (request.method === "POST" && url.pathname === "/api/transmission-kits/generate") {
-      requireRole(context, "operator");
-      const input = (await body(request)) as import("../contracts/api").GenerateTransmissionKitRequest;
-      if (!String(input.destinationId || "").trim()) throw new ApiError("DESTINATION_REQUIRED", "Destination is required", 422);
-      const data = await audited(context, "generate", "transmission-kit", null, () => service.generateTransmissionKit(input));
-      return json(response, 201, { ok: true, data }, requestId);
-    }
-    const transmissionKitMatch = url.pathname.match(/^\/api\/transmission-kits\/([^/]+)$/);
-    if (transmissionKitMatch && request.method === "GET") {
-      requireRole(context, "viewer");
-      return json(response, 200, { ok: true, data: service.getTransmissionKit(decodeURIComponent(transmissionKitMatch[1])) }, requestId);
-    }
-    if (transmissionKitMatch && request.method === "PATCH") {
-      requireRole(context, "operator");
-      const id = decodeURIComponent(transmissionKitMatch[1]);
-      const patch = (await body(request)) as Partial<Pick<import("../contracts/domain").TransmissionKit, "titleBlock" | "descriptionBlock" | "metadata" | "labels" | "launchNotes">>;
-      const data = await audited(context, "update", "transmission-kit", id, () => service.patchTransmissionKit(id, patch));
-      return json(response, 200, { ok: true, data }, requestId);
-    }
-    if (transmissionKitMatch && request.method === "DELETE") {
-      requireRole(context, "operator");
-      const id = decodeURIComponent(transmissionKitMatch[1]);
-      await audited(context, "delete", "transmission-kit", id, () => service.removeTransmissionKit(id));
-      return json(response, 204, null, requestId);
-    }
+    if (await handleTransmissionKitRoutes({ request, response, url, context, requestId, service, operations, readBody: body, sendJson: json, requireRole, audited })) return;
     if (request.method === "POST" && url.pathname === "/api/templates") {
       requireRole(context, "admin");
       const input = (await body(request)) as {
@@ -1062,47 +1035,7 @@ async function route(
       });
     }
 
-    if (request.method === "GET" && url.pathname === "/api/destinations")
-      return json(response, 200, {
-        ok: true,
-        data: service.listDestinations(),
-      });
-    if (request.method === "POST" && url.pathname === "/api/destinations") {
-      requireRole(context, "admin");
-      const input = (await body(request)) as DestinationState;
-      return json(response, 201, {
-        ok: true,
-        data: await audited(
-          context,
-          "create",
-          "destination",
-          input.id || null,
-          () => service.createDestination(input),
-        ),
-      });
-    }
-    const destinationMatch = url.pathname.match(
-      /^\/api\/destinations\/([^/]+)$/,
-    );
-    if (destinationMatch && request.method === "PATCH") {
-      requireRole(context, "admin");
-      const id = decodeURIComponent(destinationMatch[1]);
-      const patch = (await body(request)) as Partial<DestinationState>;
-      return json(response, 200, {
-        ok: true,
-        data: await audited(context, "update", "destination", id, () =>
-          service.patchDestination(id, patch),
-        ),
-      });
-    }
-    if (destinationMatch && request.method === "DELETE") {
-      requireRole(context, "admin");
-      const id = decodeURIComponent(destinationMatch[1]);
-      await audited(context, "delete", "destination", id, () =>
-        service.removeDestination(id),
-      );
-      return json(response, 204, null);
-    }
+    if (await handleDestinationRoutes({ request, response, url, context, requestId, service, operations, readBody: body, sendJson: json, requireRole, audited })) return;
 
     if (await handleProfileRoutes({
       request,
@@ -1182,33 +1115,7 @@ async function route(
       return json(response, 200, { ok: true, data }, requestId);
     }
 
-    if (request.method === "GET" && url.pathname === "/api/schedules")
-      return json(response, 200, {
-        ok: true,
-        data: operations.listSchedules(),
-      });
-    if (request.method === "POST" && url.pathname === "/api/schedules") {
-      requireRole(context, "operator");
-      const input = (await body(request)) as Omit<
-        ScheduleJob,
-        "id" | "lastRunAt" | "failureCount" | "lastError"
-      >;
-      return json(response, 201, {
-        ok: true,
-        data: await audited(context, "create", "schedule", null, () =>
-          operations.createSchedule(input),
-        ),
-      });
-    }
-    const scheduleMatch = url.pathname.match(/^\/api\/schedules\/([^/]+)$/);
-    if (scheduleMatch && request.method === "DELETE") {
-      requireRole(context, "operator");
-      const id = decodeURIComponent(scheduleMatch[1]);
-      await audited(context, "delete", "schedule", id, () =>
-        operations.deleteSchedule(id),
-      );
-      return json(response, 204, null);
-    }
+    if (await handleScheduleRoutes({ request, response, url, context, requestId, operations, readBody: body, sendJson: json, requireRole, audited })) return;
 
     if (request.method === "GET" && url.pathname === "/api/incidents")
       return json(response, 200, {

@@ -28,7 +28,10 @@ CREATE TABLE IF NOT EXISTS destinations (
   provider_api_secret_ref TEXT,
   requires_manual_setup INTEGER NOT NULL DEFAULT 0,
   transmission_kit_id TEXT,
-  notes TEXT NOT NULL DEFAULT ''
+  notes TEXT NOT NULL DEFAULT '',
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS output_profiles (
@@ -66,7 +69,10 @@ CREATE TABLE IF NOT EXISTS transmission_kits (
   description_block TEXT NOT NULL DEFAULT '',
   metadata TEXT NOT NULL DEFAULT '{}',
   labels TEXT NOT NULL DEFAULT '[]',
-  launch_notes TEXT NOT NULL DEFAULT ''
+  launch_notes TEXT NOT NULL DEFAULT '',
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS schedules (
@@ -80,7 +86,10 @@ CREATE TABLE IF NOT EXISTS schedules (
   last_run_at TEXT,
   next_run_at TEXT NOT NULL,
   failure_count INTEGER NOT NULL DEFAULT 0,
-  last_error TEXT
+  last_error TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS audit_entries (

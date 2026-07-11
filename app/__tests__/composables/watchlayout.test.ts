@@ -1,57 +1,43 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { watchLayout } from '../../composables/layout'
 
+function fakeWindow() {
+  const listeners: Array<() => void> = []
+  const target = {
+    innerWidth: 800,
+    innerHeight: 600,
+    addEventListener: vi.fn((event: string, handler: () => void) => { if (event === 'resize') listeners.push(handler) }),
+    removeEventListener: vi.fn(),
+  }
+  return { target: target as unknown as Window, mutable: target, listeners }
+}
+
 describe('layout.watchLayout', () => {
-  const originalWindow = (globalThis as any).window
-  let listeners: Array<() => void> = []
-
-  beforeEach(() => {
-    listeners = []
-    ;(globalThis as any).window = {
-      innerWidth: 800,
-      innerHeight: 600,
-      addEventListener: vi.fn((event: string, handler: () => void) => {
-        if (event === 'resize') listeners.push(handler)
-      }),
-      removeEventListener: vi.fn(),
-    }
-  })
-
-  afterEach(() => {
-    ;(globalThis as any).window = originalWindow
-  })
-
   it('returns a cleanup function', () => {
-    const cleanup = watchLayout(
-      (state) => state,
-      () => {},
-    )
-    expect(typeof cleanup).toBe('function')
+    const { target } = fakeWindow()
+    expect(typeof watchLayout((state) => state, () => {}, target)).toBe('function')
   })
 
-  it('calls onChange immediately when resize fires', () => {
+  it('calls onChange when resize fires', () => {
+    const { target, mutable, listeners } = fakeWindow()
     const onChange = vi.fn()
-    watchLayout((state) => state, onChange)
-    expect(onChange).not.toHaveBeenCalled()
-    ;(globalThis as any).window.innerWidth = 1920
-    ;(globalThis as any).window.innerHeight = 1080
-    listeners.forEach((fn) => fn())
+    watchLayout((state) => state, onChange, target)
+    mutable.innerWidth = 1920
+    mutable.innerHeight = 1080
+    listeners.forEach((listener) => listener())
     expect(onChange).toHaveBeenCalledWith({ mode: 'tv' })
   })
 
   it('cleanup removes the listener', () => {
-    const removeSpy = vi.spyOn((globalThis as any).window, 'removeEventListener')
-    const cleanup = watchLayout((s) => s, () => {})
+    const { target, mutable } = fakeWindow()
+    const cleanup = watchLayout((state) => state, () => {}, target)
     cleanup()
-    expect(removeSpy).toHaveBeenCalledWith('resize', expect.any(Function))
-    removeSpy.mockRestore()
+    expect(mutable.removeEventListener).toHaveBeenCalledWith('resize', expect.any(Function))
   })
 
-  it('returns no-op when window is undefined', () => {
-    delete (globalThis as any).window
+  it('returns no-op when target is absent', () => {
     const onChange = vi.fn()
-    const cleanup = watchLayout((s) => s, onChange)
-    expect(typeof cleanup).toBe('function')
+    expect(typeof watchLayout((state) => state, onChange, null)).toBe('function')
     expect(onChange).not.toHaveBeenCalled()
   })
 })

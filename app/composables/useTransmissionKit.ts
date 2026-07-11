@@ -46,7 +46,8 @@ export function useTransmissionKit(): UseTransmissionKitReturn {
   }
 
   async function update(id: string, patch: Partial<Pick<TransmissionKit, 'titleBlock' | 'descriptionBlock' | 'metadata' | 'labels' | 'launchNotes'>>): Promise<TransmissionKit> {
-    const updated = await runtimeApi.updateTransmissionKit(id, patch)
+    const current = kits.value.find((item) => item.id === id)
+    const updated = await runtimeApi.updateTransmissionKit(id, patch, current?.version)
     const index = kits.value.findIndex((item) => item.id === id)
     if (index >= 0) kits.value[index] = updated
     if (kit.value?.id === id) kit.value = updated
@@ -54,7 +55,8 @@ export function useTransmissionKit(): UseTransmissionKitReturn {
   }
 
   async function remove(id: string): Promise<void> {
-    await runtimeApi.deleteTransmissionKit(id)
+    const current = kits.value.find((item) => item.id === id)
+    await runtimeApi.deleteTransmissionKit(id, current?.version)
     kits.value = kits.value.filter((item) => item.id !== id)
     if (kit.value?.id === id) kit.value = null
   }

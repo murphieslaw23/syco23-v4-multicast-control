@@ -47,7 +47,7 @@ async function createSchedule(){
  const recurrence=Number(newSchedule.value.recurrenceMinutes)
  await runtimeApi.createSchedule({name:newSchedule.value.name,action:newSchedule.value.action,runAt:new Date(newSchedule.value.runAt).toISOString(),recurrenceMinutes:recurrence>0?recurrence:null,payload:{},enabled:true,nextRunAt:new Date(newSchedule.value.runAt).toISOString()}); newSchedule.value.name=''; await refresh()
 }
-async function removeSchedule(id:string){ if(confirm('Delete this schedule?')){ await runtimeApi.deleteSchedule(id); await refresh() } }
+async function removeSchedule(item:ScheduleJob){ if(confirm('Delete this schedule?')){ await runtimeApi.deleteSchedule(item.id,item.version); await refresh() } }
 async function resolveIncident(item:Incident){ const text=resolution.value[item.id]?.trim(); if(!text)return; await runtimeApi.resolveIncident(item.id,text); await refresh() }
 async function backup(){ await runtimeApi.createBackup(); await refresh() }
 async function probe(destinationId?:string){ providerProbes.value=await runtimeApi.probeProviders(destinationId) }
@@ -59,12 +59,12 @@ async function saveDestination(){
  if(!value.videoProfile){error.value='An output profile is required';return}
  value.audioProfile=value.videoProfile
  const existing=destinations.value.some(item=>item.id===value.id)
- if(existing) await runtimeApi.updateDestination(value.id,value); else await runtimeApi.createDestination(value)
+ if(existing) await runtimeApi.updateDestination(value.id,value,value.version); else await runtimeApi.createDestination(value)
  destinationDraft.value={...destinationDraft.value,id:'',label:'',endpointUrl:'',streamKeyRef:'',notes:''}; await refresh()
 }
 function editDestination(item:DestinationState){ destinationDraft.value=JSON.parse(JSON.stringify(item)) }
 function profileLabel(id:string){ const profile=profiles.value.find(item=>item.id===id); return profile?`${profile.name} · ${profile.width}×${profile.height}/${profile.fps}`:id }
-async function deleteDestination(id:string){if(confirm('Delete this destination?')){await runtimeApi.deleteDestination(id);await refresh()}}
+async function deleteDestination(item:DestinationState){if(confirm('Delete this destination?')){await runtimeApi.deleteDestination(item.id,item.version);await refresh()}}
 watch(()=>destinationDraft.value.provider,()=>{ if(!compatibleProfiles.value.some(item=>item.id===destinationDraft.value.videoProfile)){ destinationDraft.value.videoProfile=compatibleProfiles.value[0]?.id||''; destinationDraft.value.audioProfile=destinationDraft.value.videoProfile } })
 watch(()=>props.route,()=>void refresh())
 onMounted(()=>void refresh())
@@ -93,13 +93,13 @@ onMounted(()=>void refresh())
     <label>Notes<textarea v-model="destinationDraft.notes"></textarea></label>
     <button class="control-button control-button--primary" type="submit">Save destination</button>
    </form>
-   <div class="ops-panel"><h2>Configured outputs</h2><div class="card-list"><article v-for="item in destinations" :key="item.id" class="data-card"><div><strong>{{ item.label }}</strong><p>{{ item.provider }} · {{ item.status }} · {{ item.monitorMode }}</p><small>Profile: {{ profileLabel(item.videoProfile) }}</small><small>{{ item.endpointUrl }}</small></div><div v-if="isAdmin" class="inline-actions"><button @click="editDestination(item)">Edit</button><button class="danger" @click="deleteDestination(item.id)">Delete</button></div></article><p v-if="!destinations.length" class="empty">No destinations configured.</p></div></div>
+   <div class="ops-panel"><h2>Configured outputs</h2><div class="card-list"><article v-for="item in destinations" :key="item.id" class="data-card"><div><strong>{{ item.label }}</strong><p>{{ item.provider }} · {{ item.status }} · {{ item.monitorMode }}</p><small>Profile: {{ profileLabel(item.videoProfile) }}</small><small>{{ item.endpointUrl }}</small></div><div v-if="isAdmin" class="inline-actions"><button @click="editDestination(item)">Edit</button><button class="danger" @click="deleteDestination(item)">Delete</button></div></article><p v-if="!destinations.length" class="empty">No destinations configured.</p></div></div>
   </div>
  </template>
 
  <template v-else-if="route==='schedule'">
   <form v-if="isOperator" class="ops-panel schedule-form" @submit.prevent="createSchedule"><input v-model="newSchedule.name" placeholder="Schedule name" required><select v-model="newSchedule.action"><option value="pipeline.start">Start pipeline</option><option value="pipeline.stop">Stop pipeline</option><option value="destination.enable">Enable destination</option><option value="destination.disable">Disable destination</option></select><input v-model="newSchedule.runAt" type="datetime-local" required><input v-model="newSchedule.recurrenceMinutes" type="number" min="1" placeholder="Repeat minutes"><button class="control-button control-button--primary">Create</button></form>
-  <div class="ops-panel table-wrap"><table><thead><tr><th>Name</th><th>Action</th><th>Next run</th><th>Repeat</th><th>Failures</th><th></th></tr></thead><tbody><tr v-for="item in schedules" :key="item.id"><td>{{ item.name }}</td><td>{{ item.action }}</td><td>{{ new Date(item.nextRunAt).toLocaleString() }}</td><td>{{ item.recurrenceMinutes?`${item.recurrenceMinutes}m`:'once' }}</td><td>{{ item.failureCount }}</td><td><button v-if="isOperator" class="danger" @click="removeSchedule(item.id)">Delete</button></td></tr></tbody></table></div>
+  <div class="ops-panel table-wrap"><table><thead><tr><th>Name</th><th>Action</th><th>Next run</th><th>Repeat</th><th>Failures</th><th></th></tr></thead><tbody><tr v-for="item in schedules" :key="item.id"><td>{{ item.name }}</td><td>{{ item.action }}</td><td>{{ new Date(item.nextRunAt).toLocaleString() }}</td><td>{{ item.recurrenceMinutes?`${item.recurrenceMinutes}m`:'once' }}</td><td>{{ item.failureCount }}</td><td><button v-if="isOperator" class="danger" @click="removeSchedule(item)">Delete</button></td></tr></tbody></table></div>
  </template>
 
  <template v-else-if="route==='archive'">

@@ -33,10 +33,21 @@ export class PersistentDatabase {
     if (!destinationColumns.includes('provider_ack_url')) db.run('ALTER TABLE destinations ADD COLUMN provider_ack_url TEXT')
     if (!destinationColumns.includes('provider_metadata_url')) db.run('ALTER TABLE destinations ADD COLUMN provider_metadata_url TEXT')
     if (!destinationColumns.includes('provider_api_secret_ref')) db.run('ALTER TABLE destinations ADD COLUMN provider_api_secret_ref TEXT')
+    if (!destinationColumns.includes('version')) db.run('ALTER TABLE destinations ADD COLUMN version INTEGER NOT NULL DEFAULT 1')
+    if (!destinationColumns.includes('created_at')) db.run("ALTER TABLE destinations ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
+    if (!destinationColumns.includes('updated_at')) db.run("ALTER TABLE destinations ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
     const profileColumns = db.exec('PRAGMA table_info(output_profiles)')[0]?.values.map(row => String(row[1])) ?? []
     if (!profileColumns.includes('version')) db.run('ALTER TABLE output_profiles ADD COLUMN version INTEGER NOT NULL DEFAULT 1')
     if (!profileColumns.includes('created_at')) db.run("ALTER TABLE output_profiles ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
     if (!profileColumns.includes('updated_at')) db.run("ALTER TABLE output_profiles ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
+    const kitColumns = db.exec('PRAGMA table_info(transmission_kits)')[0]?.values.map(row => String(row[1])) ?? []
+    if (!kitColumns.includes('version')) db.run('ALTER TABLE transmission_kits ADD COLUMN version INTEGER NOT NULL DEFAULT 1')
+    if (!kitColumns.includes('created_at')) db.run("ALTER TABLE transmission_kits ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
+    if (!kitColumns.includes('updated_at')) db.run("ALTER TABLE transmission_kits ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
+    const currentScheduleColumns = db.exec('PRAGMA table_info(schedules)')[0]?.values.map(row => String(row[1])) ?? []
+    if (!currentScheduleColumns.includes('version')) db.run('ALTER TABLE schedules ADD COLUMN version INTEGER NOT NULL DEFAULT 1')
+    if (!currentScheduleColumns.includes('created_at')) db.run("ALTER TABLE schedules ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
+    if (!currentScheduleColumns.includes('updated_at')) db.run("ALTER TABLE schedules ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
     const templateColumns = db.exec('PRAGMA table_info(templates)')[0]?.values.map(row => String(row[1])) ?? []
     if (!templateColumns.includes('scene_json')) db.run("ALTER TABLE templates ADD COLUMN scene_json TEXT NOT NULL DEFAULT '{}'")
     if (!templateColumns.includes('version')) db.run('ALTER TABLE templates ADD COLUMN version INTEGER NOT NULL DEFAULT 1')

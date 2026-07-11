@@ -3,8 +3,8 @@ import type { TransmissionKit, Provider, Template } from '../../contracts/domain
 
 export function insertKit(db: SqlJsDatabase, kit: TransmissionKit): void {
   db.run(
-    'INSERT INTO transmission_kits (id, destination_id, title_block, description_block, metadata, labels, launch_notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [kit.id, kit.destinationId, kit.titleBlock, kit.descriptionBlock, JSON.stringify(kit.metadata), JSON.stringify(kit.labels), kit.launchNotes]
+    'INSERT INTO transmission_kits (id, destination_id, title_block, description_block, metadata, labels, launch_notes, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [kit.id, kit.destinationId, kit.titleBlock, kit.descriptionBlock, JSON.stringify(kit.metadata), JSON.stringify(kit.labels), kit.launchNotes, kit.version ?? 1, kit.createdAt ?? new Date().toISOString(), kit.updatedAt ?? new Date().toISOString()]
   )
 }
 
@@ -16,6 +16,8 @@ export function updateKit(db: SqlJsDatabase, id: string, patch: Partial<Transmis
   if ('metadata' in patch) { fields.push('metadata = ?'); values.push(JSON.stringify(patch.metadata)) }
   if ('labels' in patch) { fields.push('labels = ?'); values.push(JSON.stringify(patch.labels)) }
   if ('launchNotes' in patch) { fields.push('launch_notes = ?'); values.push(patch.launchNotes) }
+  if ('version' in patch) { fields.push('version = ?'); values.push(patch.version) }
+  if ('updatedAt' in patch) { fields.push('updated_at = ?'); values.push(patch.updatedAt) }
   if (fields.length === 0) return
   values.push(id)
   db.run(`UPDATE transmission_kits SET ${fields.join(', ')} WHERE id = ?`, values)
@@ -52,6 +54,9 @@ function rowToKit(row: unknown[]): TransmissionKit {
     metadata: JSON.parse(row[4] as string),
     labels: JSON.parse(row[5] as string),
     launchNotes: row[6] as string,
+    version: Number(row[7] ?? 1),
+    createdAt: String(row[8] ?? ''),
+    updatedAt: String(row[9] ?? ''),
   }
 }
 

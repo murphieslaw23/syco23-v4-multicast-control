@@ -17,6 +17,9 @@ export interface ScheduleJob {
   nextRunAt: string
   failureCount: number
   lastError: string | null
+  version?: number
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface Incident {
@@ -42,6 +45,7 @@ function mapSchedule(row: unknown[]): ScheduleJob {
     payload: JSON.parse(String(row[5] || '{}')) as Record<string, unknown>, enabled: Number(row[6]) === 1,
     lastRunAt: row[7] == null ? null : String(row[7]), nextRunAt: String(row[8]),
     failureCount: Number(row[9]), lastError: row[10] == null ? null : String(row[10]),
+    version: Number(row[11] ?? 1), createdAt: String(row[12] ?? ''), updatedAt: String(row[13] ?? ''),
   }
 }
 
@@ -49,7 +53,7 @@ export class OperationsStore {
   constructor(private readonly persistence: PersistentDatabase, private readonly events: RuntimeEventBus) {}
 
   listSchedules(): ScheduleJob[] {
-    return rows(this.persistence.database, 'SELECT id,name,action,run_at,recurrence_minutes,payload,enabled,last_run_at,next_run_at,failure_count,last_error FROM schedules ORDER BY next_run_at').map(mapSchedule)
+    return rows(this.persistence.database, 'SELECT id,name,action,run_at,recurrence_minutes,payload,enabled,last_run_at,next_run_at,failure_count,last_error,version,created_at,updated_at FROM schedules ORDER BY next_run_at').map(mapSchedule)
   }
 
   async createSchedule(input: Omit<ScheduleJob, 'id'|'lastRunAt'|'failureCount'|'lastError'>): Promise<ScheduleJob> {
@@ -58,10 +62,30 @@ export class OperationsStore {
     const runAt = new Date(input.runAt)
     if (!Number.isFinite(runAt.getTime())) throw new Error('Invalid schedule date')
     if (input.recurrenceMinutes !== null && input.recurrenceMinutes < 1) throw new Error('Recurrence must be at least one minute')
-    const job: ScheduleJob = { ...input, id: crypto.randomUUID(), lastRunAt: null, failureCount: 0, lastError: null, nextRunAt: runAt.toISOString() }
-    await this.persistence.transaction(db => db.run('INSERT INTO schedules (id,name,action,run_at,recurrence_minutes,payload,enabled,last_run_at,next_run_at,failure_count,last_error) VALUES (?,?,?,?,?,?,?,?,?,?,?)', [job.id,job.name,job.action,job.runAt,job.recurrenceMinutes,JSON.stringify(job.payload),job.enabled?1:0,null,job.nextRunAt,0,null]))
+    const now = new Date().toISOString()
+    const job: ScheduleJob = { ...input, id: crypto.randomUUID(), lastRunAt: null, failureCount: 0, lastError: null, nextRunAt: runAt.toISOString(), version: 1, createdAt: now, updatedAt: now }
+    await this.persistence.transaction(db => db.run('INSERT INTO schedules (id,name,action,run_at,recurrence_minutes,payload,enabled,last_run_at,next_run_at,failure_count,last_error,version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [job.id,job.name,job.action,job.runAt,job.recurrenceMinutes,JSON.stringify(job.payload),job.enabled?1:0,null,job.nextRunAt,0,null,1,now,now]))
     this.events.publish('schedule.created', job)
     return job
+  }
+
+
+  getSchedule(id: string): ScheduleJob {
+    const job = this.listSchedules().find(item => item.id === id)
+    if (!job) throw new Error('Schedule not found')
+    return job
+  }
+
+  async patchSchedule(id: string, patch: Partial<Omit<ScheduleJob, 'id'|'version'|'createdAt'|'updatedAt'|'lastRunAt'|'failureCount'|'lastError'>>): Promise<ScheduleJob> {
+    const current = this.getSchedule(id)
+    const candidate: ScheduleJob = { ...current, ...patch, id, version: (current.version ?? 1) + 1, createdAt: current.createdAt, updatedAt: new Date().toISOString() }
+    if (!candidate.name.trim()) throw new Error('Schedule name is required')
+    if (!['pipeline.start','pipeline.stop','destination.enable','destination.disable'].includes(candidate.action)) throw new Error('Unsupported schedule action')
+    if (!Number.isFinite(new Date(candidate.runAt).getTime())) throw new Error('Invalid schedule date')
+    if (candidate.recurrenceMinutes !== null && candidate.recurrenceMinutes < 1) throw new Error('Recurrence must be at least one minute')
+    await this.persistence.transaction(db => db.run('UPDATE schedules SET name=?,action=?,run_at=?,recurrence_minutes=?,payload=?,enabled=?,next_run_at=?,version=?,updated_at=? WHERE id=?',[candidate.name,candidate.action,candidate.runAt,candidate.recurrenceMinutes,JSON.stringify(candidate.payload),candidate.enabled?1:0,candidate.nextRunAt,candidate.version,candidate.updatedAt,id]))
+    this.events.publish('schedule.updated', candidate)
+    return candidate
   }
 
   async deleteSchedule(id: string): Promise<void> {

@@ -6,7 +6,7 @@
     "dev": "tsx app/server/runtime-server.ts",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "vitest run --pool=vmThreads --maxWorkers=1",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint . --ext .ts,.vue",

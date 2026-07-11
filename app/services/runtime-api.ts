@@ -5,7 +5,7 @@ export interface ApiFailure { code: string; message: string; requestId?: string 
 export interface CurrentUser { actor: string; role: 'viewer'|'operator'|'admin' }
 export interface RuntimeLog { id:string; timestamp:string; level:string; source:string; message:string }
 export interface RuntimeSession { id:string; title:string; startedAt:string; endedAt:string|null; online:boolean }
-export interface ScheduleJob { id:string; name:string; action:'pipeline.start'|'pipeline.stop'|'destination.enable'|'destination.disable'; runAt:string; recurrenceMinutes:number|null; payload:Record<string,unknown>; enabled:boolean; lastRunAt:string|null; nextRunAt:string; failureCount:number; lastError:string|null }
+export interface ScheduleJob { id:string; name:string; action:'pipeline.start'|'pipeline.stop'|'destination.enable'|'destination.disable'; runAt:string; recurrenceMinutes:number|null; payload:Record<string,unknown>; enabled:boolean; lastRunAt:string|null; nextRunAt:string; failureCount:number; lastError:string|null; version?:number; createdAt?:string; updatedAt?:string }
 export interface Incident { id:string; openedAt:string; closedAt:string|null; severity:'warning'|'critical'; status:'open'|'resolved'; title:string; description:string; source:string; resolution:string|null }
 export interface AuditEntry { id:string; timestamp:string; actor:string; role:string; action:string; resource:string; resourceId:string|null; outcome:string; detail:Record<string,unknown> }
 export interface BackupRecord { id:string }
@@ -80,7 +80,8 @@ export const runtimeApi = {
   sessions: (limit=500) => request<RuntimeSession[]>(`/api/sessions?limit=${limit}`),
   schedules: () => request<ScheduleJob[]>('/api/schedules'),
   createSchedule: (input: Omit<ScheduleJob,'id'|'lastRunAt'|'failureCount'|'lastError'>) => request<ScheduleJob>('/api/schedules',{method:'POST',body:JSON.stringify(input)}),
-  deleteSchedule: (id:string) => request<void>(`/api/schedules/${encodeURIComponent(id)}`,{method:'DELETE'}),
+  updateSchedule: (id:string,patch:Partial<ScheduleJob>,version?:number) => request<ScheduleJob>(`/api/schedules/${encodeURIComponent(id)}`,{method:'PATCH',headers:version?{'if-match':`"${version}"`}:undefined,body:JSON.stringify(patch)}),
+  deleteSchedule: (id:string,version?:number) => request<void>(`/api/schedules/${encodeURIComponent(id)}`,{method:'DELETE',headers:version?{'if-match':`"${version}"`}:undefined}),
   incidents: () => request<Incident[]>('/api/incidents'),
   resolveIncident: (id:string,resolution:string) => request<Incident>(`/api/incidents/${encodeURIComponent(id)}/resolve`,{method:'POST',body:JSON.stringify({resolution})}),
   audit: (limit=500) => request<AuditEntry[]>(`/api/audit?limit=${limit}`),
@@ -94,8 +95,8 @@ export const runtimeApi = {
   systemMetrics: () => request<SystemMetrics>('/api/system/metrics'),
   runRetention: () => request<RetentionResult>('/api/retention/run',{method:'POST'}),
   createDestination: (input: DestinationState) => request<DestinationState>('/api/destinations',{method:'POST',body:JSON.stringify(input)}),
-  updateDestination: (id:string,patch:Partial<DestinationState>) => request<DestinationState>(`/api/destinations/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(patch)}),
-  deleteDestination: (id:string) => request<void>(`/api/destinations/${encodeURIComponent(id)}`,{method:'DELETE'}),
+  updateDestination: (id:string,patch:Partial<DestinationState>,version?:number) => request<DestinationState>(`/api/destinations/${encodeURIComponent(id)}`,{method:'PATCH',headers:version?{'if-match':`"${version}"`}:undefined,body:JSON.stringify(patch)}),
+  deleteDestination: (id:string,version?:number) => request<void>(`/api/destinations/${encodeURIComponent(id)}`,{method:'DELETE',headers:version?{'if-match':`"${version}"`}:undefined}),
   status: () => request<RuntimeStatus>('/api/status'),
   destinations: () => request<DestinationState[]>('/api/destinations'),
   providers: () => request<ProviderDefinition[]>('/api/providers'),
@@ -106,8 +107,8 @@ export const runtimeApi = {
   deleteProfile: (id:string) => request<void>(`/api/profiles/${encodeURIComponent(id)}`,{method:'DELETE'}),
   transmissionKits: () => request<{items:TransmissionKit[];total:number}>('/api/transmission-kits'),
   generateTransmissionKit: (input: {destinationId:string;templateId?:string;title?:string;artist?:string;show?:string;publicUrl?:string}) => request<TransmissionKit>('/api/transmission-kits/generate',{method:'POST',body:JSON.stringify(input)}),
-  updateTransmissionKit: (id:string,patch:Partial<Pick<TransmissionKit,'titleBlock'|'descriptionBlock'|'metadata'|'labels'|'launchNotes'>>) => request<TransmissionKit>(`/api/transmission-kits/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(patch)}),
-  deleteTransmissionKit: (id:string) => request<void>(`/api/transmission-kits/${encodeURIComponent(id)}`,{method:'DELETE'}),
+  updateTransmissionKit: (id:string,patch:Partial<Pick<TransmissionKit,'titleBlock'|'descriptionBlock'|'metadata'|'labels'|'launchNotes'>>,version?:number) => request<TransmissionKit>(`/api/transmission-kits/${encodeURIComponent(id)}`,{method:'PATCH',headers:version?{'if-match':`"${version}"`}:undefined,body:JSON.stringify(patch)}),
+  deleteTransmissionKit: (id:string,version?:number) => request<void>(`/api/transmission-kits/${encodeURIComponent(id)}`,{method:'DELETE',headers:version?{'if-match':`"${version}"`}:undefined}),
   templates: () => request<Template[]>('/api/templates'),
   createTemplate: (input: { name: string; provider: Provider; scene: SceneGraph; isCustom?: boolean }) => request<Template>('/api/templates', { method: 'POST', body: JSON.stringify(input) }),
   updateTemplate: (id: string, patch: Partial<Pick<Template, 'name' | 'provider' | 'scene'>>, version?:number) => request<Template>(`/api/templates/${encodeURIComponent(id)}`, { method: 'PATCH', headers: version ? { 'if-match': `"${version}"` } : undefined, body: JSON.stringify(patch) }),
