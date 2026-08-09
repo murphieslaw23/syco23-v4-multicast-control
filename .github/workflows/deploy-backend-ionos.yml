@@ -1,13 +1,18 @@
 name: Deploy backend (IONOS)
 
 # Publishes the runtime image to GHCR and rolls the IONOS VPS forward to it.
-# The frontend is deployed separately by deploy-frontend-vercel.yml.
+#
+# DISABLED ON PUSH BY DESIGN. The IONOS host is owned by the SYCO23 Multicast
+# Control *v5* deploy bundle, which installs a different application at
+# /opt/syco23-multicast-control on port 3010 behind its own Caddy, and serves
+# api.syco23.org. This workflow deploys the v4 runtime from this repository.
+# Running the two against the same host would replace v5 with a different
+# application and fight over the same hostname and ports.
+#
+# The trigger is therefore manual only, so a merge to main can never roll this
+# over the v5 runtime. Do not restore the push trigger unless this repository
+# becomes the owner of the host. See docs/DEPLOYMENT.md.
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
   workflow_dispatch:
     inputs:
       image_tag:

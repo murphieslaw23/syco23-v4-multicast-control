@@ -1,5 +1,21 @@
 # Deployment — split runtime (IONOS) and console (Vercel)
 
+> **The IONOS host is not owned by this repository.**
+>
+> `87.106.219.4` is owned by the **SYCO23 Multicast Control v5 deploy bundle**,
+> which installs a different application at `/opt/syco23-multicast-control`,
+> serves it on port 3010 behind its own Caddy, and answers on
+> `api.syco23.org`. That bundle is the retained production path.
+>
+> Everything below describes how *this* repository's v4 runtime would deploy.
+> `deploy-backend-ionos.yml` is therefore **manual-dispatch only** — it has no
+> push trigger, so merging to `main` can never roll the v4 runtime over v5.
+> Running it against the v5 host would replace the application and contend for
+> the same hostname and ports.
+>
+> Before using it, give it a host of its own, or a distinct path, port and
+> hostname on a shared host with the reverse proxy routing both.
+
 The runtime and the operator console ship independently:
 
 | Half | Where | What runs there |
