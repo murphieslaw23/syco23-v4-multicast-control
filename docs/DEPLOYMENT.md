@@ -63,6 +63,20 @@ Set on the `production` environment (and `preview` for the console):
 
 GHCR uses the built-in `GITHUB_TOKEN`; no registry secret is needed.
 
+## Disconnect the Vercel Git integration first
+
+`deploy-frontend-vercel.yml` is the single owner of console deployments. This
+repository also has Vercel projects wired directly to GitHub
+(`syco23-v4-multicast-control-kzlh` and `syco23-multicast-control-1`), which
+deploy on their own whenever a branch is pushed.
+
+Leaving both in place means every push deploys twice, from two different build
+paths, racing for the same production alias. Before enabling the workflow,
+disconnect the Git integration in **Vercel → project → Settings → Git**, and
+retire whichever project is not the canonical console.
+
+Keep one project — the one whose ID goes in `VERCEL_PROJECT_ID`.
+
 ## Vercel project variables
 
 Set in Vercel project settings, not in GitHub:
