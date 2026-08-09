@@ -1,10 +1,27 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 
 function text(path: string): string {
   return readFileSync(resolve(process.cwd(), path), 'utf-8')
+}
+
+function sourceFiles(directory: string): string[] {
+  return readdirSync(resolve(process.cwd(), directory), { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) return sourceFiles(path)
+    return /\.(ts|vue)$/.test(entry.name) ? [path] : []
+  })
+}
+
+// Returns "<path>:<line number>: <line>" for every line matching the pattern,
+// in the same shape a grep would produce.
+function grep(directory: string, pattern: RegExp): string[] {
+  return sourceFiles(directory).flatMap((path) =>
+    text(path)
+      .split('\n')
+      .flatMap((line, index) => (pattern.test(line) ? [`${path}:${index + 1}: ${line.trim()}`] : [])),
+  )
 }
 
 function packageJson() {
@@ -69,12 +86,10 @@ describe('config.package', () => {
   })
 
   it('keeps server domain imports behind the canonical contracts boundary', () => {
-    const matches = spawnSync('rg', [
-      '-n',
-      String.raw`from ['"](?:\.\./)+types(?:/index)?['"]`,
-      'app/server',
-    ], { encoding: 'utf8' }).stdout.trim()
-    expect(matches).toBe('')
+    // Scanned in-process rather than by shelling out to ripgrep, which is not
+    // present on every machine that runs this suite.
+    const matches = grep('app/server', /from ['"](?:\.\.\/)+types(?:\/index)?['"]/)
+    expect(matches).toEqual([])
     expect(text('app/contracts/domain.ts')).not.toContain("from '../types")
     expect(text('app/types/index.ts')).toContain("from '../contracts/domain'")
   })
