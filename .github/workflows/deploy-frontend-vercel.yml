@@ -33,15 +33,32 @@ jobs:
       IS_PRODUCTION: ${{ github.event_name == 'push' }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check Vercel configuration
+        id: guard
+        # Until the Vercel project exists this workflow has nothing to deploy to.
+        # Skipping keeps pull requests green instead of failing on absent secrets.
+        run: |
+          if [ -z "${VERCEL_TOKEN:-}" ] || [ -z "${VERCEL_PROJECT_ID:-}" ] || [ -z "${VERCEL_ORG_ID:-}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Vercel secrets are not configured; skipping frontend deployment."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-node@v4
+        if: steps.guard.outputs.configured == 'true'
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - if: steps.guard.outputs.configured == 'true'
+        run: npm ci
       - name: Install Vercel CLI
+        if: steps.guard.outputs.configured == 'true'
         run: npm install --global vercel@latest
 
       - name: Pull Vercel environment
+        if: steps.guard.outputs.configured == 'true'
         # Also materialises RUNTIME_API_ORIGIN and VITE_RUNTIME_WS_ORIGIN from the
         # Vercel project so the build embeds the right runtime endpoints.
         run: |
@@ -52,6 +69,7 @@ jobs:
           fi
 
       - name: Build
+        if: steps.guard.outputs.configured == 'true'
         run: |
           if [ "$IS_PRODUCTION" = "true" ]; then
             vercel build --prod --token="$VERCEL_TOKEN"
@@ -60,6 +78,7 @@ jobs:
           fi
 
       - name: Deploy
+        if: steps.guard.outputs.configured == 'true'
         id: deploy
         run: |
           set -euo pipefail
@@ -72,4 +91,5 @@ jobs:
           echo "Deployed to $url" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke check
+        if: steps.guard.outputs.configured == 'true'
         run: curl --fail --show-error --silent --retry 5 --retry-delay 3 --retry-all-errors "${{ steps.deploy.outputs.url }}" >/dev/null

@@ -83,6 +83,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check IONOS configuration
+        id: guard
+        env:
+          IONOS_HOST: ${{ secrets.IONOS_HOST }}
+          IONOS_USER: ${{ secrets.IONOS_USER }}
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+          IONOS_APP_DIR: ${{ secrets.IONOS_APP_DIR }}
+        # Until the VPS secrets exist there is nothing to deploy to. Skipping
+        # keeps the branch green instead of failing on absent configuration.
+        run: |
+          if [ -z "${IONOS_HOST:-}" ] || [ -z "${IONOS_USER:-}" ] || [ -z "${IONOS_SSH_KEY:-}" ] || [ -z "${IONOS_APP_DIR:-}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::IONOS secrets are not configured; skipping backend deployment."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Resolve image reference
         id: image
         run: |
@@ -93,6 +110,7 @@ jobs:
           fi
 
       - name: Configure SSH
+        if: steps.guard.outputs.configured == 'true'
         env:
           IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
           IONOS_HOST: ${{ secrets.IONOS_HOST }}
@@ -113,6 +131,7 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
       - name: Ship deployment assets
+        if: steps.guard.outputs.configured == 'true'
         env:
           IONOS_HOST: ${{ secrets.IONOS_HOST }}
           IONOS_USER: ${{ secrets.IONOS_USER }}
@@ -128,6 +147,7 @@ jobs:
           ssh -i ~/.ssh/id_deploy -p "$PORT" "$IONOS_USER@$IONOS_HOST" "chmod +x '$IONOS_APP_DIR/deploy.sh'"
 
       - name: Roll out
+        if: steps.guard.outputs.configured == 'true'
         env:
           IONOS_HOST: ${{ secrets.IONOS_HOST }}
           IONOS_USER: ${{ secrets.IONOS_USER }}
@@ -146,6 +166,7 @@ jobs:
             "'$IONOS_APP_DIR/deploy.sh' '$IMAGE'"
 
       - name: Verify public endpoint
+        if: steps.guard.outputs.configured == 'true'
         env:
           API_HEALTH_URL: ${{ secrets.IONOS_API_HEALTH_URL }}
         # Confirms the TLS reverse proxy in front of the container is serving the
@@ -159,7 +180,7 @@ jobs:
           curl --fail --show-error --silent --retry 5 --retry-delay 5 --retry-all-errors "$API_HEALTH_URL" >/dev/null
 
       - name: Revoke registry credentials
-        if: always()
+        if: always() && steps.guard.outputs.configured == 'true'
         env:
           IONOS_HOST: ${{ secrets.IONOS_HOST }}
           IONOS_USER: ${{ secrets.IONOS_USER }}
