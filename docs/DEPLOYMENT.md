@@ -77,6 +77,12 @@ retire whichever project is not the canonical console.
 
 Keep one project — the one whose ID goes in `VERCEL_PROJECT_ID`.
 
+**Do not set `NODE_ENV=production` as a Vercel project variable.** It makes the
+install skip devDependencies, and the build then dies with
+`sh: vue-tsc: command not found` and exit code 127 — `vue-tsc` and `vite` are
+both devDependencies. This is exactly why the two existing projects behave
+differently on the same commit: one builds, the other fails at that line.
+
 ## Vercel project variables
 
 Set in Vercel project settings, not in GitHub:
