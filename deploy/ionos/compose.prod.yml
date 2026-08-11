@@ -1,12 +1,13 @@
 # Production composition for the IONOS VPS.
 #
-# This file is copied to ${IONOS_APP_DIR} by the deploy workflow and runs the
-# published GHCR image rather than building from source on the server. Secrets
-# and host-specific values live in the sibling `.env`, which is created once by
-# the operator and never leaves the server.
+# Installed by deploy/ionos/install.sh and rolled forward by deploy/ionos/deploy.sh.
+# Runs the published GHCR image rather than building on the server. Secrets and
+# host-specific values live in the sibling `.env`, created once by the installer
+# with mode 0600 and never overwritten afterwards.
 #
-# The runtime binds to loopback only; the host TLS reverse proxy terminates
-# HTTPS on the public API hostname and forwards to ${SYCO_BIND_PORT}.
+# Caddy terminates TLS and obtains certificates automatically, so the host needs
+# no separate reverse proxy. The runtime is additionally published on loopback
+# for diagnostics, but public traffic always arrives through Caddy.
 services:
   syco23-control:
     image: ${SYCO_IMAGE:?Set SYCO_IMAGE to the fully qualified GHCR reference}
@@ -16,6 +17,8 @@ services:
     stop_grace_period: 30s
     ports:
       - "127.0.0.1:${SYCO_BIND_PORT:-3000}:3000"
+    networks:
+      - syco23
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
@@ -67,5 +70,47 @@ services:
         max-size: 10m
         max-file: "5"
 
+  caddy:
+    image: caddy:2.10-alpine
+    container_name: syco23-multicast-control-caddy
+    restart: unless-stopped
+    depends_on:
+      - syco23-control
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN to the public API hostname}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+    networks:
+      - syco23
+
+# A single bridge network, deliberately NOT `internal: true`. The runtime must
+# reach AzuraCast for metadata, the provider APIs for acknowledgement probes,
+# and the RTMP ingest endpoints it pushes to — an internal network would cut
+# all of that off while leaving the container superficially healthy.
+networks:
+  syco23:
+
 volumes:
   syco23-data:
+  caddy-data:
+  caddy-config:

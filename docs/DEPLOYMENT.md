@@ -1,20 +1,14 @@
 # Deployment — split runtime (IONOS) and console (Vercel)
 
-> **The IONOS host is not owned by this repository.**
+> **This repository owns the IONOS host.** The SYCO23 v5 bundle that previously
+> claimed it is superseded; its deployment assets are archived under
+> [`deploy/ionos/archive-v5/`](../deploy/ionos/archive-v5/ARCHIVE.md), and its
+> packaging was adapted into `deploy/ionos/install.sh`.
 >
-> `87.106.219.4` is owned by the **SYCO23 Multicast Control v5 deploy bundle**,
-> which installs a different application at `/opt/syco23-multicast-control`,
-> serves it on port 3010 behind its own Caddy, and answers on
-> `api.syco23.org`. That bundle is the retained production path.
->
-> Everything below describes how *this* repository's v4 runtime would deploy.
-> `deploy-backend-ionos.yml` is therefore **manual-dispatch only** — it has no
-> push trigger, so merging to `main` can never roll the v4 runtime over v5.
-> Running it against the v5 host would replace the application and contend for
-> the same hostname and ports.
->
-> Before using it, give it a host of its own, or a distinct path, port and
-> hostname on a shared host with the reverse proxy routing both.
+> **Run the read-only `IONOS recon` workflow before the first install.** If the
+> v5 stack or anything else still holds ports 80/443 on that box, the installer
+> will refuse to start rather than evict it — which is correct, but you want to
+> know beforehand.
 
 The runtime and the operator console ship independently:
 
@@ -47,20 +41,40 @@ browser ──── /api/*  ──▶ Vercel edge ──▶ https://api.example
 
 ## One-time IONOS setup
 
-Ubuntu 24.04 on a VPS-L profile, per the RUNBOOK.
+Ubuntu 24.04 on a VPS-L profile, per the RUNBOOK. `deploy/ionos/install.sh`
+does the work — it installs only missing prerequisites, obtains TLS through
+Caddy, and needs no reverse proxy to exist beforehand.
 
-1. Install Docker Engine with the Compose plugin.
-2. Create the application directory, e.g. `/opt/syco23`, owned by the deploy user.
-3. Copy `.env.example` to `/opt/syco23/.env` and fill it in. `SYCO_ALLOWED_WS_ORIGINS`
-   must name the console origin. Keep this file off version control — the deploy
-   workflow never overwrites it, it only rewrites the `SYCO_IMAGE` line.
-4. Put a TLS reverse proxy (Caddy or nginx + Let's Encrypt) in front of the
-   loopback port on the public API hostname. **TLS is mandatory**: the console is
-   served over HTTPS and browsers will not let it call an HTTP origin.
-   The proxy must forward `Upgrade`/`Connection` headers for `/api/events/ws`.
-5. Add the deploy user's public key to `~/.ssh/authorized_keys`.
+Point the API hostname's DNS `A` record at the VPS first; Caddy cannot complete
+an ACME challenge until it resolves.
 
-The first deploy copies `compose.prod.yml` and `deploy.sh` into that directory.
+```bash
+# On the VPS, as root, from a copy of deploy/ionos/
+DOMAIN=api.syco23.org \
+EXPECTED_IP=87.106.219.4 \
+UI_ORIGIN=https://your-console.vercel.app \
+SYCO_IMAGE=ghcr.io/murphieslaw23/syco23-v4-multicast-control:main \
+./install.sh
+```
+
+For a private GHCR package, also pass `GHCR_USER` and `GHCR_TOKEN`; the
+installer logs out again afterwards.
+
+What it does, in order: writes a read-only host inventory to
+`/opt/syco23-multicast-control/preflight-*.txt`; verifies DNS resolves to
+`EXPECTED_IP`; **aborts if ports 80/443 already belong to another service**,
+stopping nothing; installs Docker and Compose if absent; preserves an active
+UFW policy while allowing 22/80/443; generates `shared/.env` and a root-only
+credentials file at mode `0600`; then starts the stack and waits for
+`https://$DOMAIN/api/health/ready`.
+
+Re-running is safe. An existing `.env` and its generated administrator password
+are reused, never regenerated — only the `SYCO_IMAGE` line advances.
+
+Afterwards, set `SYCO_ALLOWED_WS_ORIGINS` in `shared/.env` to the console
+origin and restart, or live events will silently never arrive. Point
+`IONOS_APP_DIR` at `/opt/syco23-multicast-control/current` so subsequent
+rollouts land beside the environment the installer created.
 
 ## GitHub secrets
 

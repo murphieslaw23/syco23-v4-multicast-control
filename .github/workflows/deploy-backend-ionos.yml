@@ -2,17 +2,20 @@ name: Deploy backend (IONOS)
 
 # Publishes the runtime image to GHCR and rolls the IONOS VPS forward to it.
 #
-# DISABLED ON PUSH BY DESIGN. The IONOS host is owned by the SYCO23 Multicast
-# Control *v5* deploy bundle, which installs a different application at
-# /opt/syco23-multicast-control on port 3010 behind its own Caddy, and serves
-# api.syco23.org. This workflow deploys the v4 runtime from this repository.
-# Running the two against the same host would replace v5 with a different
-# application and fight over the same hostname and ports.
+# This repository owns the IONOS host. The superseded v5 bundle is archived
+# under deploy/ionos/archive-v5/; its packaging was adapted into
+# deploy/ionos/install.sh, which performs the first-time installation. This
+# workflow handles every rollout after that.
 #
-# The trigger is therefore manual only, so a merge to main can never roll this
-# over the v5 runtime. Do not restore the push trigger unless this repository
-# becomes the owner of the host. See docs/DEPLOYMENT.md.
+# The deploy job is inert until the IONOS secrets exist, so enabling continuous
+# deployment is a matter of adding them. Run the read-only ionos-recon workflow
+# first to confirm nothing else holds ports 80/443 on the target host.
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   workflow_dispatch:
     inputs:
       image_tag:
@@ -145,9 +148,12 @@ jobs:
         run: |
           set -euo pipefail
           PORT="${IONOS_SSH_PORT:-22}"
+          # IONOS_APP_DIR is the installer's release directory, normally
+          # /opt/syco23-multicast-control/current, where .env is symlinked to
+          # the operator-managed shared/.env.
           ssh -i ~/.ssh/id_deploy -p "$PORT" "$IONOS_USER@$IONOS_HOST" "mkdir -p '$IONOS_APP_DIR'"
           scp -i ~/.ssh/id_deploy -P "$PORT" \
-            deploy/ionos/compose.prod.yml deploy/ionos/deploy.sh \
+            deploy/ionos/compose.prod.yml deploy/ionos/Caddyfile deploy/ionos/deploy.sh \
             "$IONOS_USER@$IONOS_HOST:$IONOS_APP_DIR/"
           ssh -i ~/.ssh/id_deploy -p "$PORT" "$IONOS_USER@$IONOS_HOST" "chmod +x '$IONOS_APP_DIR/deploy.sh'"
 

@@ -34,7 +34,10 @@ compose() { docker compose --file "${COMPOSE_FILE}" --env-file "${ENV_FILE}" "$@
 set_image() {
   local image="$1"
   if grep -q '^SYCO_IMAGE=' "${ENV_FILE}"; then
-    sed -i "s|^SYCO_IMAGE=.*|SYCO_IMAGE=${image}|" "${ENV_FILE}"
+    # --follow-symlinks matters: install.sh links current/.env to shared/.env,
+    # and plain `sed -i` would replace the link with a regular file, detaching
+    # the stack from the operator-managed environment.
+    sed --follow-symlinks -i "s|^SYCO_IMAGE=.*|SYCO_IMAGE=${image}|" "${ENV_FILE}"
   else
     printf '\nSYCO_IMAGE=%s\n' "${image}" >>"${ENV_FILE}"
   fi
