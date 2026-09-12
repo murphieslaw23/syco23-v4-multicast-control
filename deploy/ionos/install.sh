@@ -29,6 +29,7 @@ ENV_FILE="$APP_ROOT/shared/.env"
 CREDENTIALS_FILE="${CREDENTIALS_FILE:-/root/syco23-runtime-credentials.txt}"
 LOG_FILE="/var/log/syco23-multicast-control-install.log"
 RUN_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+INITIAL_RELEASE="$APP_ROOT/releases/install-$RUN_STAMP"
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
@@ -114,9 +115,9 @@ fi
 
 # ── Application directory and delegated rollout access ─────────────────────
 # The workflow account gets no ownership of the application or secret files.
-# A private group grants only the access required to replace release assets and
-# advance SYCO_IMAGE in shared/.env. The setgid bit keeps newly shipped assets
-# in the same group on later rollouts.
+# A private group grants only the access required to stage releases, advance
+# the pointer, and update SYCO_IMAGE in shared/.env. The application root and
+# stable current link stay root-owned.
 if ! getent group "$DEPLOY_GROUP" >/dev/null 2>&1; then
   groupadd --system "$DEPLOY_GROUP"
 fi
@@ -126,10 +127,32 @@ fi
 
 install -d -o root -g root            -m 0755 "$APP_ROOT"
 install -d -o root -g "$DEPLOY_GROUP" -m 0750 "$APP_ROOT/shared"
-install -d -o root -g "$DEPLOY_GROUP" -m 2770 "$APP_ROOT/current"
-install -o root -g "$DEPLOY_GROUP" -m 0660 "$BUNDLE_DIR/compose.prod.yml" "$APP_ROOT/current/compose.prod.yml"
-install -o root -g "$DEPLOY_GROUP" -m 0660 "$BUNDLE_DIR/Caddyfile"        "$APP_ROOT/current/Caddyfile"
-install -o root -g "$DEPLOY_GROUP" -m 0770 "$BUNDLE_DIR/deploy.sh"        "$APP_ROOT/current/deploy.sh"
+install -d -o root -g "$DEPLOY_GROUP" -m 2770 "$APP_ROOT/releases"
+install -d -o root -g "$DEPLOY_GROUP" -m 2770 "$APP_ROOT/pointers"
+
+if [[ (-e "$APP_ROOT/current" || -L "$APP_ROOT/current") && ! -L "$APP_ROOT/current" ]]; then
+  fail "$APP_ROOT/current is not a symlink. Preserve it and migrate its assets before enabling immutable releases."
+fi
+if [[ -L "$APP_ROOT/current" && "$(readlink "$APP_ROOT/current")" != "pointers/current" ]]; then
+  fail "$APP_ROOT/current has an unexpected target. Preserve it and inspect the host before continuing."
+fi
+
+HAD_ACTIVE_RELEASE=0
+if [[ -L "$APP_ROOT/pointers/current" ]]; then
+  HAD_ACTIVE_RELEASE=1
+fi
+
+install -d -o root -g "$DEPLOY_GROUP" -m 2770 "$INITIAL_RELEASE"
+install -o root -g "$DEPLOY_GROUP" -m 0660 "$BUNDLE_DIR/compose.prod.yml" "$INITIAL_RELEASE/compose.prod.yml"
+install -o root -g "$DEPLOY_GROUP" -m 0660 "$BUNDLE_DIR/Caddyfile"        "$INITIAL_RELEASE/Caddyfile"
+install -o root -g "$DEPLOY_GROUP" -m 0770 "$BUNDLE_DIR/deploy.sh"        "$INITIAL_RELEASE/deploy.sh"
+
+if [[ ! -L "$APP_ROOT/current" ]]; then
+  ln -s "pointers/current" "$APP_ROOT/current"
+fi
+if [[ "$HAD_ACTIVE_RELEASE" -eq 0 ]]; then
+  ln -s "../releases/install-$RUN_STAMP" "$APP_ROOT/pointers/current"
+fi
 
 # ── Secrets, generated once and then left alone ─────────────────────────────
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -164,11 +187,14 @@ if [[ ! -f "$ENV_FILE" ]]; then
   chmod 600 "$CREDENTIALS_FILE"
 else
   log "Reusing the existing restricted environment and root-only credentials."
-  # Only the image reference is advanced; every operator-managed value stays.
-  if grep -q '^SYCO_IMAGE=' "$ENV_FILE"; then
-    sed -i "s|^SYCO_IMAGE=.*|SYCO_IMAGE=${SYCO_IMAGE}|" "$ENV_FILE"
-  else
-    printf 'SYCO_IMAGE=%s\n' "$SYCO_IMAGE" >> "$ENV_FILE"
+  # Existing installations advance the image through deploy.sh so a failed
+  # reinstall can restore the prior image and release assets together.
+  if [[ "$HAD_ACTIVE_RELEASE" -eq 0 ]]; then
+    if grep -q '^SYCO_IMAGE=' "$ENV_FILE"; then
+      sed -i "s|^SYCO_IMAGE=.*|SYCO_IMAGE=${SYCO_IMAGE}|" "$ENV_FILE"
+    else
+      printf 'SYCO_IMAGE=%s\n' "$SYCO_IMAGE" >> "$ENV_FILE"
+    fi
   fi
 fi
 
@@ -177,14 +203,22 @@ fi
 chown root:"$DEPLOY_GROUP" "$ENV_FILE"
 chmod 0660 "$ENV_FILE"
 
-ln -sfn "$ENV_FILE" "$APP_ROOT/current/.env"
-
 # ── Start ───────────────────────────────────────────────────────────────────
-cd "$APP_ROOT/current"
 if [[ -n "${GHCR_USER:-}" && -n "${GHCR_TOKEN:-}" ]]; then
   printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 fi
 
+if [[ "$HAD_ACTIVE_RELEASE" -eq 1 ]]; then
+  "$INITIAL_RELEASE/deploy.sh" "$SYCO_IMAGE"
+  [[ -n "${GHCR_TOKEN:-}" ]] && docker logout ghcr.io >/dev/null 2>&1 || true
+  log "Deployment complete."
+  log "Runtime URL: https://$DOMAIN"
+  log "Credentials are stored root-only at $CREDENTIALS_FILE"
+  log "Rollouts use non-root account $DEPLOY_USER through group $DEPLOY_GROUP."
+  exit 0
+fi
+
+cd "$INITIAL_RELEASE"
 "${COMPOSE[@]}" -f compose.prod.yml --env-file "$ENV_FILE" config >/dev/null
 "${COMPOSE[@]}" -f compose.prod.yml --env-file "$ENV_FILE" pull
 "${COMPOSE[@]}" -f compose.prod.yml --env-file "$ENV_FILE" up -d

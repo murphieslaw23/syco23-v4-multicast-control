@@ -75,22 +75,29 @@ UFW policy while allowing 22/80/443; creates the private `syco23-deploy` group
 and adds `DEPLOY_USER`; generates the environment and a root-only credentials
 file; then starts the stack and waits for `https://$DOMAIN/api/health/ready`.
 
-Application ownership remains with root. The release directory is
-`root:syco23-deploy` at mode `2770`; `shared/` is mode `0750`; and
-`shared/.env` is `root:syco23-deploy` at mode `0660` because `deploy.sh` must
-advance only its `SYCO_IMAGE` entry. The administrator credentials record stays
-`root:root` at mode `0600` and is never readable by the deployment group. Keep
-group membership limited to the dedicated automation account.
+Application ownership remains with root. The narrowly mutable `releases/` and
+`pointers/` directories are `root:syco23-deploy` at mode `2770`;
+`shared/` is mode `0750`; and `shared/.env` is
+`root:syco23-deploy` at mode `0660` because `deploy.sh` must advance only
+its `SYCO_IMAGE` entry. The application root and stable `current` link are not
+writable by the deployment account. The administrator credentials record stays
+`root:root` at mode `0600` and is never readable by the deployment group.
+Keep group membership limited to the dedicated automation account.
 
 Re-running is safe. An existing `.env` and its generated administrator password
 are reused, never regenerated — only the `SYCO_IMAGE` line advances.
 
 Afterwards, set `SYCO_ALLOWED_WS_ORIGINS` in `shared/.env` to the console
 origin and restart, or live events will silently never arrive. Point
-`IONOS_APP_DIR` at `/opt/syco23-multicast-control/current` so subsequent
-rollouts land beside the environment the installer created. Open a new SSH
-session after installation so the new group membership is active before the
-first workflow rollout.
+`IONOS_APP_DIR` at the application root,
+`/opt/syco23-multicast-control`. Open a new SSH session after installation so
+the new group membership is active before the first workflow rollout.
+
+The installer refuses to replace an existing non-symlink `current/` directory.
+If a host was bootstrapped with the earlier in-place layout, preserve that
+directory and migrate its three deployment assets into a release directory
+before rerunning the installer; the refusal prevents a blind rollout from
+destroying the only rollback copy.
 
 ## GitHub secrets
 
@@ -103,7 +110,7 @@ Set on the `production` environment (and `preview` for the console):
 | `IONOS_SSH_KEY` | Private key for that user |
 | `IONOS_SSH_PORT` | Optional, defaults to 22 |
 | `IONOS_SSH_KNOWN_HOSTS` | Optional; pins the host key. Without it the workflow falls back to trust-on-first-use |
-| `IONOS_APP_DIR` | Release directory: `/opt/syco23-multicast-control/current` |
+| `IONOS_APP_DIR` | Application root: `/opt/syco23-multicast-control` |
 | `IONOS_API_HEALTH_URL` | Optional; public readiness URL verified after rollout |
 | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | Console deployment |
 
@@ -112,9 +119,10 @@ GHCR uses the built-in `GITHUB_TOKEN`; no registry secret is needed.
 If the installer uses a non-default `DEPLOY_GROUP`, set the non-secret GitHub
 environment variable `IONOS_DEPLOY_GROUP` to the same name. Otherwise it
 defaults to `syco23-deploy`. Before uploading anything, the workflow proves the
-SSH account is non-root, belongs to that group, can write the release directory
-and linked environment, and can reach Docker. The check reports only capability
-failures; it never prints the environment or credentials.
+SSH account is non-root, belongs to that group, cannot write the application
+root, can write only the release/pointer areas and shared environment, and can
+reach Docker. The check reports only capability failures; it never prints the
+environment or credentials.
 
 ## Disconnect the Vercel Git integration first
 
@@ -152,10 +160,23 @@ different runtime is a variable change plus a redeploy — no code change.
 
 `deploy-backend-ionos.yml` runs `release:check`, builds and pushes the image to
 GHCR with provenance and an SBOM, then deploys the **immutable digest** rather
-than a moving tag. On the VPS, `deploy.sh` records the outgoing image, pulls the
-new one, waits up to 120s for the container healthcheck, and **restores the
-previous image if the new release does not become healthy**. A failed rollback
-is reported loudly rather than silently left broken.
+than a moving tag. It stages `compose.prod.yml`, `Caddyfile`, and `deploy.sh`
+together under `releases/<commit>-<run>-<attempt>/`; existing releases are
+never overwritten.
+
+On the VPS, `deploy.sh` records the outgoing image and resolves the outgoing
+release before changing anything. The candidate must pass both its container
+healthcheck and the public TLS readiness probe. Only then does an atomic rename
+advance `pointers/current`; the root-owned `current` link follows that
+pointer. If pull, start, either health check, or pointer activation fails, the
+script restores `SYCO_IMAGE` and runs the **previous release's compose file,
+Caddyfile, and deployment context**. Failed release directories are retained
+for investigation, and a failed rollback is reported loudly.
+
+The environment and persistent Docker volumes remain shared across releases.
+Do not place credentials inside `releases/`. Release cleanup is intentionally
+manual so the active and last-known-good assets cannot be pruned by a failed
+workflow.
 
 To redeploy an image that already exists, run the workflow manually with
 `image_tag` — the build job is skipped entirely.

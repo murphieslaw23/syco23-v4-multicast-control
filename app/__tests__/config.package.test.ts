@@ -82,7 +82,8 @@ describe('config.package', () => {
     expect(installer).toContain('id -u "$DEPLOY_USER"')
     expect(installer).toContain('groupadd --system "$DEPLOY_GROUP"')
     expect(installer).toContain('usermod -a -G "$DEPLOY_GROUP" "$DEPLOY_USER"')
-    expect(installer).toContain('install -d -o root -g "$DEPLOY_GROUP" -m 2770 "$APP_ROOT/current"')
+    expect(installer).toContain('install -d -o root -g "$DEPLOY_GROUP" -m 2770 "$APP_ROOT/releases"')
+    expect(installer).toContain('install -d -o root -g "$DEPLOY_GROUP" -m 2770 "$APP_ROOT/pointers"')
     expect(installer).toContain('install -d -o root -g "$DEPLOY_GROUP" -m 0750 "$APP_ROOT/shared"')
     expect(installer).toContain('chown root:"$DEPLOY_GROUP" "$ENV_FILE"')
     expect(installer).toContain('chmod 0660 "$ENV_FILE"')
@@ -91,11 +92,33 @@ describe('config.package', () => {
     expect(workflow).toContain('IONOS_DEPLOY_GROUP: ${{ vars.IONOS_DEPLOY_GROUP || \'syco23-deploy\' }}')
     expect(workflow).toContain('test "$(id -u)" -ne 0')
     expect(workflow).toContain('id -nG | tr \' \' \'\\n\' | grep -Fx "$IONOS_DEPLOY_GROUP"')
-    expect(workflow).toContain('test -w "$IONOS_APP_DIR"')
-    expect(workflow).toContain('test -w "$IONOS_APP_DIR/.env"')
+    expect(workflow).toContain('test -w "$IONOS_APP_DIR/releases"')
+    expect(workflow).toContain('test -w "$IONOS_APP_DIR/pointers"')
+    expect(workflow).toContain('test -w "$IONOS_APP_DIR/shared/.env"')
 
     expect(deploymentGuide).toContain('DEPLOY_USER=syco23-deploy')
     expect(deploymentGuide).toContain('root:syco23-deploy')
+  })
+
+  it('rolls IONOS releases back with the prior compose and Caddy assets', () => {
+    const installer = text('deploy/ionos/install.sh')
+    const deploy = text('deploy/ionos/deploy.sh')
+    const workflow = text('.github/workflows/deploy-backend-ionos.yml')
+
+    expect(installer).toContain('INITIAL_RELEASE="$APP_ROOT/releases/install-$RUN_STAMP"')
+    expect(installer).toContain('ln -s "pointers/current" "$APP_ROOT/current"')
+    expect(installer).toContain('ln -s "../releases/install-$RUN_STAMP" "$APP_ROOT/pointers/current"')
+
+    expect(workflow).toContain('RELEASE_ID="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"')
+    expect(workflow).toContain('RELEASE_DIR="$IONOS_APP_DIR/releases/$RELEASE_ID"')
+    expect(workflow).toContain("printf -v REMOTE_SCRIPT '%q' \"$RELEASE_DIR/deploy.sh\"")
+    expect(workflow).toContain("printf -v REMOTE_IMAGE '%q' \"$IMAGE\"")
+
+    expect(deploy).toContain('PREVIOUS_RELEASE="$(readlink -f "$CURRENT_LINK")"')
+    expect(deploy).toContain('compose_for "$PREVIOUS_RELEASE" pull')
+    expect(deploy).toContain('compose_for "$PREVIOUS_RELEASE" up -d --remove-orphans')
+    expect(deploy).toContain('await_public_health')
+    expect(deploy).toContain('mv -Tf "$next_pointer" "$ACTIVE_POINTER"')
   })
 
   it('targets the integrated production runtime in Playwright', () => {

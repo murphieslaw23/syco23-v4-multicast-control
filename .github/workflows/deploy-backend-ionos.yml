@@ -113,9 +113,15 @@ jobs:
 
       - name: Resolve image reference
         id: image
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
-          if [ -n "${{ inputs.image_tag }}" ]; then
-            echo "image=${REGISTRY}/${IMAGE_NAME}:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          if [ -n "$IMAGE_TAG" ]; then
+            [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || {
+              echo "::error::image_tag is not a valid container tag."
+              exit 1
+            }
+            echo "image=${REGISTRY}/${IMAGE_NAME}:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
           else
             echo "image=${{ needs.build.outputs.image }}" >> "$GITHUB_OUTPUT"
           fi
@@ -173,11 +179,27 @@ jobs:
             echo "deployment account is not in the required rollout group" >&2
             exit 1
           }
-          test -d "$IONOS_APP_DIR" && test -w "$IONOS_APP_DIR" || {
-            echo "deployment account cannot write the release directory" >&2
+          test -d "$IONOS_APP_DIR" && test ! -w "$IONOS_APP_DIR" || {
+            echo "application root must exist and remain non-writable" >&2
             exit 1
           }
-          test -L "$IONOS_APP_DIR/.env" && test -w "$IONOS_APP_DIR/.env" || {
+          test -d "$IONOS_APP_DIR/releases" && test -w "$IONOS_APP_DIR/releases" || {
+            echo "deployment account cannot stage releases" >&2
+            exit 1
+          }
+          test -d "$IONOS_APP_DIR/pointers" && test -w "$IONOS_APP_DIR/pointers" || {
+            echo "deployment account cannot advance the active release pointer" >&2
+            exit 1
+          }
+          test -L "$IONOS_APP_DIR/current" && test -L "$IONOS_APP_DIR/pointers/current" || {
+            echo "immutable release pointers are missing" >&2
+            exit 1
+          }
+          case "$(readlink -f "$IONOS_APP_DIR/current")" in
+            "$IONOS_APP_DIR"/releases/*) ;;
+            *) echo "current does not resolve beneath releases" >&2; exit 1 ;;
+          esac
+          test -f "$IONOS_APP_DIR/shared/.env" && test -r "$IONOS_APP_DIR/shared/.env" && test -w "$IONOS_APP_DIR/shared/.env" || {
             echo "deployment account cannot update the shared environment" >&2
             exit 1
           }
@@ -197,14 +219,16 @@ jobs:
         run: |
           set -euo pipefail
           PORT="${IONOS_SSH_PORT:-22}"
-          # IONOS_APP_DIR is the installer's release directory, normally
-          # /opt/syco23-multicast-control/current, where .env is symlinked to
-          # the operator-managed shared/.env.
-          ssh -i ~/.ssh/id_deploy -p "$PORT" "$IONOS_USER@$IONOS_HOST" "mkdir -p '$IONOS_APP_DIR'"
+          RELEASE_ID="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          RELEASE_DIR="$IONOS_APP_DIR/releases/$RELEASE_ID"
+          # A run gets one new directory. Refusing an existing target prevents
+          # retries or concurrent work from mutating an already-staged release.
+          ssh -i ~/.ssh/id_deploy -p "$PORT" "$IONOS_USER@$IONOS_HOST" "mkdir '$RELEASE_DIR'"
           scp -i ~/.ssh/id_deploy -P "$PORT" \
             deploy/ionos/compose.prod.yml deploy/ionos/Caddyfile deploy/ionos/deploy.sh \
-            "$IONOS_USER@$IONOS_HOST:$IONOS_APP_DIR/"
-          ssh -i ~/.ssh/id_deploy -p "$PORT" "$IONOS_USER@$IONOS_HOST" "chmod +x '$IONOS_APP_DIR/deploy.sh'"
+            "$IONOS_USER@$IONOS_HOST:$RELEASE_DIR/"
+          ssh -i ~/.ssh/id_deploy -p "$PORT" "$IONOS_USER@$IONOS_HOST" \
+            "chmod 0440 '$RELEASE_DIR/compose.prod.yml' '$RELEASE_DIR/Caddyfile' && chmod 0550 '$RELEASE_DIR/deploy.sh'"
 
       - name: Roll out
         if: steps.guard.outputs.configured == 'true'
@@ -219,11 +243,15 @@ jobs:
         run: |
           set -euo pipefail
           PORT="${IONOS_SSH_PORT:-22}"
+          RELEASE_ID="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          RELEASE_DIR="$IONOS_APP_DIR/releases/$RELEASE_ID"
           # The token goes over stdin so it never appears in the remote argv.
           printf '%s' "$GHCR_TOKEN" | ssh -i ~/.ssh/id_deploy -p "$PORT" "$IONOS_USER@$IONOS_HOST" \
             "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
+          printf -v REMOTE_SCRIPT '%q' "$RELEASE_DIR/deploy.sh"
+          printf -v REMOTE_IMAGE '%q' "$IMAGE"
           ssh -i ~/.ssh/id_deploy -p "$PORT" "$IONOS_USER@$IONOS_HOST" \
-            "'$IONOS_APP_DIR/deploy.sh' '$IMAGE'"
+            "$REMOTE_SCRIPT $REMOTE_IMAGE"
 
       - name: Verify public endpoint
         if: steps.guard.outputs.configured == 'true'

@@ -2,8 +2,8 @@
 #
 # Installed by deploy/ionos/install.sh and rolled forward by deploy/ionos/deploy.sh.
 # Runs the published GHCR image rather than building on the server. Secrets and
-# host-specific values live in the sibling `.env`, created once by the installer
-# with mode 0600 and never overwritten afterwards.
+# host-specific values live in `shared/.env` outside every release, created once
+# by the installer and never copied into a release directory.
 #
 # Caddy terminates TLS and obtains certificates automatically, so the host needs
 # no separate reverse proxy. The runtime is additionally published on loopback
