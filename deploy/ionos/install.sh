@@ -5,11 +5,11 @@
 # Adapted from the SYCO23 v5 IONOS deploy bundle, which had the better
 # packaging: it inventories the host before touching it, refuses to start when
 # something else already owns ports 80/443, preserves an active UFW policy,
-# writes secrets with mode 0600, and obtains TLS automatically through Caddy.
+# keeps credentials root-only, and obtains TLS automatically through Caddy.
 # The application it installs is this repository's v4 runtime, pulled as a
 # published image rather than built on the server.
 #
-#   DOMAIN=api.example.org EXPECTED_IP=203.0.113.10 \
+#   DEPLOY_USER=syco23-deploy DOMAIN=api.example.org EXPECTED_IP=203.0.113.10 \
 #   SYCO_IMAGE=ghcr.io/owner/repo@sha256:... ./install.sh
 #
 # Re-running is safe: an existing .env and its generated credentials are reused,
@@ -21,6 +21,8 @@ DOMAIN="${DOMAIN:?Set DOMAIN to the public API hostname}"
 EXPECTED_IP="${EXPECTED_IP:-}"
 UI_ORIGIN="${UI_ORIGIN:-}"
 SYCO_IMAGE="${SYCO_IMAGE:?Set SYCO_IMAGE to the GHCR image reference to install}"
+DEPLOY_USER="${DEPLOY_USER:?Set DEPLOY_USER to the non-root account used by GitHub Actions}"
+DEPLOY_GROUP="${DEPLOY_GROUP:-syco23-deploy}"
 APP_ROOT="${APP_ROOT:-/opt/syco23-multicast-control}"
 BUNDLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$APP_ROOT/shared/.env"
@@ -36,6 +38,9 @@ fail() { printf '[syco23-install] ERROR: %s\n' "$*" >&2; exit 1; }
 [[ "${EUID}" -eq 0 ]] || fail "Run this installer as root."
 command -v apt-get >/dev/null 2>&1 || fail "This installer supports Debian/Ubuntu hosts with apt-get."
 command -v ss      >/dev/null 2>&1 || fail "The host is missing ss/iproute2, so port safety cannot be verified."
+id -u "$DEPLOY_USER" >/dev/null 2>&1 || fail "DEPLOY_USER '$DEPLOY_USER' does not exist. Create the non-root SSH account first."
+[[ "$(id -u "$DEPLOY_USER")" -ne 0 ]] || fail "DEPLOY_USER must be a non-root account."
+[[ "$DEPLOY_GROUP" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || fail "DEPLOY_GROUP must be a valid Linux group name."
 
 # ── Inventory before mutation ────────────────────────────────────────────────
 log "Recording read-only host inventory."
@@ -107,11 +112,24 @@ if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; the
   ufw allow 443/udp
 fi
 
-# ── Application directory ───────────────────────────────────────────────────
-mkdir -p "$APP_ROOT/shared" "$APP_ROOT/current"
-install -m 0644 "$BUNDLE_DIR/compose.prod.yml" "$APP_ROOT/current/compose.prod.yml"
-install -m 0644 "$BUNDLE_DIR/Caddyfile"        "$APP_ROOT/current/Caddyfile"
-install -m 0755 "$BUNDLE_DIR/deploy.sh"        "$APP_ROOT/current/deploy.sh"
+# ── Application directory and delegated rollout access ─────────────────────
+# The workflow account gets no ownership of the application or secret files.
+# A private group grants only the access required to replace release assets and
+# advance SYCO_IMAGE in shared/.env. The setgid bit keeps newly shipped assets
+# in the same group on later rollouts.
+if ! getent group "$DEPLOY_GROUP" >/dev/null 2>&1; then
+  groupadd --system "$DEPLOY_GROUP"
+fi
+if ! id -nG "$DEPLOY_USER" | tr ' ' '\n' | grep -Fxq "$DEPLOY_GROUP"; then
+  usermod -a -G "$DEPLOY_GROUP" "$DEPLOY_USER"
+fi
+
+install -d -o root -g root            -m 0755 "$APP_ROOT"
+install -d -o root -g "$DEPLOY_GROUP" -m 0750 "$APP_ROOT/shared"
+install -d -o root -g "$DEPLOY_GROUP" -m 2770 "$APP_ROOT/current"
+install -o root -g "$DEPLOY_GROUP" -m 0660 "$BUNDLE_DIR/compose.prod.yml" "$APP_ROOT/current/compose.prod.yml"
+install -o root -g "$DEPLOY_GROUP" -m 0660 "$BUNDLE_DIR/Caddyfile"        "$APP_ROOT/current/Caddyfile"
+install -o root -g "$DEPLOY_GROUP" -m 0770 "$BUNDLE_DIR/deploy.sh"        "$APP_ROOT/current/deploy.sh"
 
 # ── Secrets, generated once and then left alone ─────────────────────────────
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -145,7 +163,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   } > "$CREDENTIALS_FILE"
   chmod 600 "$CREDENTIALS_FILE"
 else
-  log "Reusing the existing root-only environment and credentials."
+  log "Reusing the existing restricted environment and root-only credentials."
   # Only the image reference is advanced; every operator-managed value stays.
   if grep -q '^SYCO_IMAGE=' "$ENV_FILE"; then
     sed -i "s|^SYCO_IMAGE=.*|SYCO_IMAGE=${SYCO_IMAGE}|" "$ENV_FILE"
@@ -153,6 +171,11 @@ else
     printf 'SYCO_IMAGE=%s\n' "$SYCO_IMAGE" >> "$ENV_FILE"
   fi
 fi
+
+# deploy.sh must update only SYCO_IMAGE. Keep ownership with root while granting
+# that single deployment group read/write access to the operator-managed file.
+chown root:"$DEPLOY_GROUP" "$ENV_FILE"
+chmod 0660 "$ENV_FILE"
 
 ln -sfn "$ENV_FILE" "$APP_ROOT/current/.env"
 
@@ -190,4 +213,6 @@ curl --silent --show-error --fail "https://$DOMAIN/api/health/ready"; printf '\n
 log "Deployment complete."
 log "Runtime URL: https://$DOMAIN"
 log "Credentials are stored root-only at $CREDENTIALS_FILE"
+log "Rollouts use non-root account $DEPLOY_USER through group $DEPLOY_GROUP."
+log "Open a new SSH session before the first workflow rollout so group membership is active."
 log "Set SYCO_ALLOWED_WS_ORIGINS to the console origin, or live events will not arrive."

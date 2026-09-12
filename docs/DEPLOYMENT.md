@@ -48,8 +48,15 @@ Caddy, and needs no reverse proxy to exist beforehand.
 Point the API hostname's DNS `A` record at the VPS first; Caddy cannot complete
 an ACME challenge until it resolves.
 
+Create a dedicated non-root SSH account for automation before running the
+installer. Before the first workflow rollout it must also have Docker access;
+membership in the Docker group is effectively root-equivalent, so do not reuse
+a human or application account. Install only the deployment public key for
+this account and disable password authentication.
+
 ```bash
 # On the VPS, as root, from a copy of deploy/ionos/
+DEPLOY_USER=syco23-deploy \
 DOMAIN=api.syco23.org \
 EXPECTED_IP=87.106.219.4 \
 UI_ORIGIN=https://your-console.vercel.app \
@@ -64,9 +71,16 @@ What it does, in order: writes a read-only host inventory to
 `/opt/syco23-multicast-control/preflight-*.txt`; verifies DNS resolves to
 `EXPECTED_IP`; **aborts if ports 80/443 already belong to another service**,
 stopping nothing; installs Docker and Compose if absent; preserves an active
-UFW policy while allowing 22/80/443; generates `shared/.env` and a root-only
-credentials file at mode `0600`; then starts the stack and waits for
-`https://$DOMAIN/api/health/ready`.
+UFW policy while allowing 22/80/443; creates the private `syco23-deploy` group
+and adds `DEPLOY_USER`; generates the environment and a root-only credentials
+file; then starts the stack and waits for `https://$DOMAIN/api/health/ready`.
+
+Application ownership remains with root. The release directory is
+`root:syco23-deploy` at mode `2770`; `shared/` is mode `0750`; and
+`shared/.env` is `root:syco23-deploy` at mode `0660` because `deploy.sh` must
+advance only its `SYCO_IMAGE` entry. The administrator credentials record stays
+`root:root` at mode `0600` and is never readable by the deployment group. Keep
+group membership limited to the dedicated automation account.
 
 Re-running is safe. An existing `.env` and its generated administrator password
 are reused, never regenerated — only the `SYCO_IMAGE` line advances.
@@ -74,7 +88,9 @@ are reused, never regenerated — only the `SYCO_IMAGE` line advances.
 Afterwards, set `SYCO_ALLOWED_WS_ORIGINS` in `shared/.env` to the console
 origin and restart, or live events will silently never arrive. Point
 `IONOS_APP_DIR` at `/opt/syco23-multicast-control/current` so subsequent
-rollouts land beside the environment the installer created.
+rollouts land beside the environment the installer created. Open a new SSH
+session after installation so the new group membership is active before the
+first workflow rollout.
 
 ## GitHub secrets
 
@@ -83,15 +99,22 @@ Set on the `production` environment (and `preview` for the console):
 | Secret | Purpose |
 |---|---|
 | `IONOS_HOST` | VPS hostname or IP |
-| `IONOS_USER` | SSH user with Docker access |
+| `IONOS_USER` | Dedicated non-root SSH user passed to the installer as `DEPLOY_USER`, with Docker access |
 | `IONOS_SSH_KEY` | Private key for that user |
 | `IONOS_SSH_PORT` | Optional, defaults to 22 |
 | `IONOS_SSH_KNOWN_HOSTS` | Optional; pins the host key. Without it the workflow falls back to trust-on-first-use |
-| `IONOS_APP_DIR` | Application directory, e.g. `/opt/syco23` |
+| `IONOS_APP_DIR` | Release directory: `/opt/syco23-multicast-control/current` |
 | `IONOS_API_HEALTH_URL` | Optional; public readiness URL verified after rollout |
 | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | Console deployment |
 
 GHCR uses the built-in `GITHUB_TOKEN`; no registry secret is needed.
+
+If the installer uses a non-default `DEPLOY_GROUP`, set the non-secret GitHub
+environment variable `IONOS_DEPLOY_GROUP` to the same name. Otherwise it
+defaults to `syco23-deploy`. Before uploading anything, the workflow proves the
+SSH account is non-root, belongs to that group, can write the release directory
+and linked environment, and can reach Docker. The check reports only capability
+failures; it never prints the environment or credentials.
 
 ## Disconnect the Vercel Git integration first
 
@@ -141,7 +164,8 @@ To redeploy an image that already exists, run the workflow manually with
 
 ```bash
 # On the VPS
-docker compose -f /opt/syco23/compose.prod.yml ps
+docker compose -f /opt/syco23-multicast-control/current/compose.prod.yml \
+  --env-file /opt/syco23-multicast-control/shared/.env ps
 curl --fail http://127.0.0.1:${SYCO_BIND_PORT:-3000}/api/health/ready
 
 # Publicly

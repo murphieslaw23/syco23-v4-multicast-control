@@ -72,6 +72,32 @@ describe('config.package', () => {
     expect(release).toContain('actions/attest-sbom@v2')
   })
 
+  it('delegates IONOS rollout access through a dedicated non-root group', () => {
+    const installer = text('deploy/ionos/install.sh')
+    const workflow = text('.github/workflows/deploy-backend-ionos.yml')
+    const deploymentGuide = text('docs/DEPLOYMENT.md')
+
+    expect(installer).toContain('DEPLOY_USER="${DEPLOY_USER:?')
+    expect(installer).toContain('DEPLOY_GROUP="${DEPLOY_GROUP:-syco23-deploy}"')
+    expect(installer).toContain('id -u "$DEPLOY_USER"')
+    expect(installer).toContain('groupadd --system "$DEPLOY_GROUP"')
+    expect(installer).toContain('usermod -a -G "$DEPLOY_GROUP" "$DEPLOY_USER"')
+    expect(installer).toContain('install -d -o root -g "$DEPLOY_GROUP" -m 2770 "$APP_ROOT/current"')
+    expect(installer).toContain('install -d -o root -g "$DEPLOY_GROUP" -m 0750 "$APP_ROOT/shared"')
+    expect(installer).toContain('chown root:"$DEPLOY_GROUP" "$ENV_FILE"')
+    expect(installer).toContain('chmod 0660 "$ENV_FILE"')
+    expect(installer).toContain('chmod 600 "$CREDENTIALS_FILE"')
+
+    expect(workflow).toContain('IONOS_DEPLOY_GROUP: ${{ vars.IONOS_DEPLOY_GROUP || \'syco23-deploy\' }}')
+    expect(workflow).toContain('test "$(id -u)" -ne 0')
+    expect(workflow).toContain('id -nG | tr \' \' \'\\n\' | grep -Fx "$IONOS_DEPLOY_GROUP"')
+    expect(workflow).toContain('test -w "$IONOS_APP_DIR"')
+    expect(workflow).toContain('test -w "$IONOS_APP_DIR/.env"')
+
+    expect(deploymentGuide).toContain('DEPLOY_USER=syco23-deploy')
+    expect(deploymentGuide).toContain('root:syco23-deploy')
+  })
+
   it('targets the integrated production runtime in Playwright', () => {
     const config = text('playwright.config.ts')
     expect(config).toContain('E2E_PORT')

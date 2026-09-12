@@ -141,6 +141,52 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
+      - name: Verify non-root deployment access
+        if: steps.guard.outputs.configured == 'true'
+        env:
+          IONOS_HOST: ${{ secrets.IONOS_HOST }}
+          IONOS_USER: ${{ secrets.IONOS_USER }}
+          IONOS_SSH_PORT: ${{ secrets.IONOS_SSH_PORT }}
+          IONOS_APP_DIR: ${{ secrets.IONOS_APP_DIR }}
+          IONOS_DEPLOY_GROUP: ${{ vars.IONOS_DEPLOY_GROUP || 'syco23-deploy' }}
+        run: |
+          set -euo pipefail
+          PORT="${IONOS_SSH_PORT:-22}"
+          [[ "$IONOS_DEPLOY_GROUP" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || {
+            echo "::error::IONOS_DEPLOY_GROUP is not a valid Linux group name."
+            exit 1
+          }
+          [[ "$IONOS_APP_DIR" =~ ^/[A-Za-z0-9._/-]+$ && "$IONOS_APP_DIR" != *'/../'* ]] || {
+            echo "::error::IONOS_APP_DIR must be a normalized absolute path."
+            exit 1
+          }
+          ssh -i ~/.ssh/id_deploy -p "$PORT" "$IONOS_USER@$IONOS_HOST" \
+            "bash -s -- '$IONOS_DEPLOY_GROUP' '$IONOS_APP_DIR'" <<'REMOTE'
+          set -euo pipefail
+          IONOS_DEPLOY_GROUP="$1"
+          IONOS_APP_DIR="$2"
+          test "$(id -u)" -ne 0 || {
+            echo "deployment account must be non-root" >&2
+            exit 1
+          }
+          id -nG | tr ' ' '\n' | grep -Fx "$IONOS_DEPLOY_GROUP" >/dev/null || {
+            echo "deployment account is not in the required rollout group" >&2
+            exit 1
+          }
+          test -d "$IONOS_APP_DIR" && test -w "$IONOS_APP_DIR" || {
+            echo "deployment account cannot write the release directory" >&2
+            exit 1
+          }
+          test -L "$IONOS_APP_DIR/.env" && test -w "$IONOS_APP_DIR/.env" || {
+            echo "deployment account cannot update the shared environment" >&2
+            exit 1
+          }
+          docker info >/dev/null 2>&1 || {
+            echo "deployment account cannot access Docker" >&2
+            exit 1
+          }
+          REMOTE
+
       - name: Ship deployment assets
         if: steps.guard.outputs.configured == 'true'
         env:
