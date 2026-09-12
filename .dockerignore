@@ -1,5 +1,7 @@
 .git
-.github
+# .github is deliberately NOT ignored: the Dockerfile runs `npm run release:check`
+# in the build stage, and its config tests assert on the workflow definitions.
+# Only the build stage sees these files; the runtime stage copies app/ and dist/.
 node_modules
 dist
 coverage

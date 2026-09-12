@@ -1,0 +1,129 @@
+name: IONOS recon (read-only)
+
+# Inventories the VPS before anything is deployed to it. This workflow never
+# mutates the host: no installs, no writes, no container or service changes.
+#
+# It exists because the VPS is contested. The SETCRAWLER runbook and the SYCO23
+# deploy bundle both claim api.syco23.org on the same machine, and both ship a
+# reverse proxy that wants ports 80/443. Deploying blind risks taking an
+# unrelated production service off the air, so the host state is established
+# first and read by a human.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ionos-recon
+  cancel-in-progress: true
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check IONOS configuration
+        id: guard
+        env:
+          IONOS_HOST: ${{ secrets.IONOS_HOST }}
+          IONOS_USER: ${{ secrets.IONOS_USER }}
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: |
+          if [ -z "${IONOS_HOST:-}" ] || [ -z "${IONOS_USER:-}" ] || [ -z "${IONOS_SSH_KEY:-}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::error::IONOS_HOST, IONOS_USER and IONOS_SSH_KEY must be set on the production environment."
+            exit 1
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Configure SSH
+        env:
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+          IONOS_HOST: ${{ secrets.IONOS_HOST }}
+          IONOS_SSH_PORT: ${{ secrets.IONOS_SSH_PORT }}
+          IONOS_SSH_KNOWN_HOSTS: ${{ secrets.IONOS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$IONOS_SSH_KEY" > ~/.ssh/id_recon
+          chmod 600 ~/.ssh/id_recon
+          if [ -n "${IONOS_SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$IONOS_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -p "${IONOS_SSH_PORT:-22}" -H "$IONOS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Inventory the host
+        env:
+          IONOS_HOST: ${{ secrets.IONOS_HOST }}
+          IONOS_USER: ${{ secrets.IONOS_USER }}
+          IONOS_SSH_PORT: ${{ secrets.IONOS_SSH_PORT }}
+        # Strictly read-only commands. Environment files and container
+        # environment are deliberately never printed, so credentials cannot leak
+        # into the workflow log.
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_recon -p "${IONOS_SSH_PORT:-22}" \
+            -o BatchMode=yes -o ConnectTimeout=20 \
+            "$IONOS_USER@$IONOS_HOST" 'bash -s' <<'REMOTE' | tee /tmp/recon.txt
+          set -u
+          echo "=== identity ==="
+          hostname; uname -a; cat /etc/os-release 2>/dev/null | head -2; uptime
+          echo
+          echo "=== resources ==="
+          df -h / /opt 2>/dev/null | sed -n '1,10p'
+          free -m 2>/dev/null | head -3
+          echo
+          echo "=== who owns 80/443 and the app ports ==="
+          (ss -lntup 2>/dev/null || netstat -lntup 2>/dev/null) \
+            | awk 'NR==1 || $4 ~ /:(80|443|3000|3010|8000)$/'
+          echo
+          echo "=== docker ==="
+          if command -v docker >/dev/null 2>&1; then
+            docker --version
+            docker compose version 2>/dev/null || true
+            echo "-- running containers --"
+            docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
+            echo "-- volumes --"
+            docker volume ls
+          else
+            echo "docker not installed"
+          fi
+          echo
+          echo "=== deployment directories ==="
+          ls -la /opt 2>/dev/null || echo "no /opt"
+          for d in /opt/syco23 /opt/syco23-multicast-control /opt/syco23-setcrawler; do
+            [ -d "$d" ] && { echo "-- $d --"; ls -la "$d"; }
+          done
+          echo
+          echo "=== firewall ==="
+          (ufw status 2>/dev/null || echo "ufw not present") | head -15
+          echo
+          echo "=== dns as seen from the host ==="
+          for name in api.syco23.org; do
+            printf '%s -> %s\n' "$name" "$(getent ahostsv4 "$name" 2>/dev/null | awk 'NR==1{print $1}')"
+          done
+          echo
+          echo "=== local health probes (no mutation) ==="
+          for p in 3000 3010 8000; do
+            code="$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://127.0.0.1:$p/api/health" 2>/dev/null || echo 000)"
+            echo "127.0.0.1:$p/api/health -> $code"
+          done
+          echo "=== end ==="
+          REMOTE
+
+      - name: Publish inventory to the run summary
+        if: always()
+        run: |
+          {
+            echo '## IONOS host inventory'
+            echo '```text'
+            cat /tmp/recon.txt 2>/dev/null || echo '(no output captured)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Discard the key
+        if: always()
+        run: rm -f ~/.ssh/id_recon

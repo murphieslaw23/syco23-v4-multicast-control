@@ -1,0 +1,30 @@
+{
+  servers {
+    protocols h1 h2 h3
+  }
+}
+
+{$DOMAIN} {
+  encode zstd gzip
+
+  # Carries both the REST surface and the /api/events/ws upgrade. Caddy
+  # forwards Upgrade/Connection automatically, so the event socket works
+  # without extra configuration. flush_interval -1 disables response
+  # buffering, which matters for the SSE-style log stream.
+  reverse_proxy syco23-control:3000 {
+    flush_interval -1
+  }
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "same-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    -Server
+  }
+
+  log {
+    output stdout
+    format json
+  }
+}
