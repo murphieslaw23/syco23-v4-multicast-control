@@ -87,6 +87,9 @@ jobs:
     needs: [build]
     if: ${{ always() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     environment: production
     steps:
       - uses: actions/checkout@v4
