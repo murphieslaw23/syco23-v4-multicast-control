@@ -54,6 +54,16 @@ import { handleMetadataRoutes } from "./http/routes/metadata";
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "0.0.0.0";
 const distRoot = resolve(process.cwd(), "dist");
+// Browser origins permitted to open the event socket. Same-origin upgrades are always
+// allowed; a split deployment (SPA hosted apart from the runtime) must name the SPA
+// origin here because its WebSocket connects to the runtime directly rather than
+// through the proxy rewrite that carries the rest of the API.
+const allowedSocketOrigins = new Set(
+  (process.env.SYCO_ALLOWED_WS_ORIGINS || "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean),
+);
 const persistence = new PersistentDatabase(process.env.SYCO_DB_PATH);
 const events = new RuntimeEventBus();
 const secretStore = new EnvironmentSecretStore();
@@ -176,6 +186,23 @@ function auth(request: IncomingMessage): AuthContext | null {
 function requireRole(context: AuthContext, role: Role): void {
   if (rank[context.role] < rank[role])
     throw new Error(`Forbidden: ${role} role required`);
+}
+
+function isAllowedSocketOrigin(
+  origin: string | undefined,
+  host: string | undefined,
+): boolean {
+  // Non-browser clients (health probes, operational tooling) send no Origin header;
+  // they are still gated by the single-use ticket consumed on upgrade.
+  if (!origin) return true;
+  let candidate: URL;
+  try {
+    candidate = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (host && candidate.host.toLowerCase() === host.toLowerCase()) return true;
+  return allowedSocketOrigins.has(candidate.origin.toLowerCase());
 }
 
 function mime(path: string): string {
@@ -1249,6 +1276,8 @@ async function main(): Promise<void> {
       `http://${request.headers.host || "localhost"}`,
     );
     if (url.pathname !== "/api/events/ws") return socket.destroy();
+    if (!isAllowedSocketOrigin(request.headers.origin, request.headers.host))
+      return socket.destroy();
     const ticket = url.searchParams.get("ticket") || "";
     if (!wsTickets.consume(ticket)) return socket.destroy();
     sockets.handleUpgrade(request, socket, head, (client) =>
