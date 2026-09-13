@@ -121,6 +121,19 @@ describe('config.package', () => {
     expect(deploy).toContain('mv -Tf "$next_pointer" "$ACTIVE_POINTER"')
   })
 
+  it('fails closed on a stale IONOS app path and inventories release metadata only', () => {
+    const deployment = text('.github/workflows/deploy-backend-ionos.yml')
+    const recon = text('.github/workflows/ionos-recon.yml')
+
+    expect(deployment).toContain('IONOS_APP_DIR must point to the application root, not current/')
+    expect(recon).toContain('APP_ROOT=/opt/syco23-multicast-control')
+    expect(recon).toContain("stat -c '%A %U:%G %n'")
+    expect(recon).toContain('readlink -f "$APP_ROOT/current"')
+    expect(recon).toContain('find "$APP_ROOT/releases" -mindepth 1 -maxdepth 1 -type d')
+    expect(recon).not.toContain('cat "$APP_ROOT/shared/.env"')
+    expect(recon).not.toContain('.Config.Env')
+  })
+
   it('targets the integrated production runtime in Playwright', () => {
     const config = text('playwright.config.ts')
     expect(config).toContain('E2E_PORT')

@@ -166,6 +166,12 @@ jobs:
             echo "::error::IONOS_APP_DIR must be a normalized absolute path."
             exit 1
           }
+          case "$IONOS_APP_DIR" in
+            */current|*/current/)
+              echo "::error::IONOS_APP_DIR must point to the application root, not current/."
+              exit 1
+              ;;
+          esac
           ssh -i ~/.ssh/id_deploy -p "$PORT" "$IONOS_USER@$IONOS_HOST" \
             "bash -s -- '$IONOS_DEPLOY_GROUP' '$IONOS_APP_DIR'" <<'REMOTE'
           set -euo pipefail

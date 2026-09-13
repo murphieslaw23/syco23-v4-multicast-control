@@ -99,6 +99,11 @@ directory and migrate its three deployment assets into a release directory
 before rerunning the installer; the refusal prevents a blind rollout from
 destroying the only rollback copy.
 
+The read-only recon workflow reports owner/mode metadata for this layout,
+resolves the `current` link, and lists release directory names. It never reads
+`shared/.env` or container environment values. A real `current/` directory is
+reported explicitly as requiring an operator-led migration.
+
 ## GitHub secrets
 
 Set on the `production` environment (and `preview` for the console):
@@ -115,6 +120,8 @@ Set on the `production` environment (and `preview` for the console):
 | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | Console deployment |
 
 GHCR uses the built-in `GITHUB_TOKEN`; no registry secret is needed.
+`IONOS_APP_DIR` values ending in `/current` are rejected before SSH so a
+stale secret cannot stage nested releases under the active release.
 
 If the installer uses a non-default `DEPLOY_GROUP`, set the non-secret GitHub
 environment variable `IONOS_DEPLOY_GROUP` to the same name. Otherwise it
