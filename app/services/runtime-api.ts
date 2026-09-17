@@ -36,7 +36,20 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (token) headers.set('authorization', `Bearer ${token}`)
   if (csrfToken && init.method && !['GET','HEAD'].includes(init.method)) headers.set('x-csrf-token', csrfToken)
   const response = await fetch(path, { ...init, headers, credentials: 'same-origin' })
-  const payload = response.status === 204 ? { ok: true } : await response.json() as Envelope<T>
+  // Split deployments (static console on Vercel, runtime on IONOS) can answer
+  // /api/* with a proxy 502/HTML page when the runtime is down or unwired.
+  // Read text first so a non-JSON body becomes a structured failure instead
+  // of an unhandled SyntaxError in the UI.
+  const raw = response.status === 204 ? '' : await response.text()
+  let payload: Envelope<T>
+  try {
+    payload = (response.status === 204 || raw.trim() === '') ? { ok: response.ok } as Envelope<T> : JSON.parse(raw) as Envelope<T>
+  } catch {
+    throw Object.assign(
+      new Error(`API returned non-JSON response (HTTP ${response.status}); runtime unreachable or proxy misconfigured.`),
+      { code: 'NON_JSON_RESPONSE' },
+    )
+  }
   if (!response.ok || !payload.ok) {
     const failure = typeof payload.error === 'string' ? payload.error : payload.error?.message
     const error = new Error(failure || `Request failed with ${response.status}`) as Error & { code?: string; requestId?: string }
