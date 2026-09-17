@@ -1,0 +1,33 @@
+name: Self-Hosted Runner Policy
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, syco23, broker]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject GitHub-hosted runner labels
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, sys
+          prefixes = ("ubuntu", "windows", "macos")
+          pattern = re.compile(r"(?i)(?:" + "|".join(prefixes) + r")-(?:latest|\d)")
+          hits = []
+          for path in pathlib.Path('.github/workflows').glob('*.y*ml'):
+              for number, line in enumerate(path.read_text().splitlines(), 1):
+                  if pattern.search(line):
+                      hits.append(f"{path}:{number}:{line.strip()}")
+          if hits:
+              print("GitHub-hosted runner labels are forbidden:\n" + "\n".join(hits))
+              sys.exit(1)
+          print("runner policy: self-hosted only")
+          PY
