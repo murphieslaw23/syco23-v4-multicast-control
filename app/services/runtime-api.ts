@@ -130,8 +130,23 @@ export const runtimeApi = {
   stopPipeline: () => request<RuntimeStatus['supervisor']>('/api/pipeline/stop', { method: 'POST', headers: { 'idempotency-key': crypto.randomUUID() } }),
 }
 
+// The runtime is reachable on the page origin when the SPA is served by the runtime
+// server itself, or through a same-origin proxy rewrite when the SPA is hosted apart
+// from it. WebSocket upgrades cannot traverse those rewrites, so a split deployment
+// points the event socket straight at the runtime with VITE_RUNTIME_WS_ORIGIN
+// (for example wss://api.example.org).
+function runtimeEventsUrl(): URL {
+  const configured = String(import.meta.env.VITE_RUNTIME_WS_ORIGIN || '').trim()
+  if (!configured) {
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return new URL(`${protocol}//${location.host}/api/events/ws`)
+  }
+  // Accepts either an https:// origin or an already-explicit wss:// one.
+  const base = configured.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:')
+  return new URL('/api/events/ws', base)
+}
+
 export function connectRuntimeEvents(onEvent: (event: { type: string; payload: unknown; timestamp: string }) => void): () => void {
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
   let closed = false
   let socket: WebSocket | null = null
   let retry = 1000
@@ -141,7 +156,7 @@ export function connectRuntimeEvents(onEvent: (event: { type: string; payload: u
     if (closed) return
     try {
       const auth = await request<{ ticket: string }>('/api/events/ticket', { method: 'POST' })
-      const url = new URL(`${protocol}//${location.host}/api/events/ws`)
+      const url = runtimeEventsUrl()
       url.searchParams.set('ticket', auth.ticket)
       socket = new WebSocket(url)
       socket.onopen = () => { retry = 1000 }

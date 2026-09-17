@@ -1,0 +1,95 @@
+name: Deploy frontend (Vercel)
+
+# Builds the operator console SPA and ships it to Vercel. The console talks to
+# the IONOS runtime through the proxy route declared in vercel.json, so the two
+# halves deploy independently.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-frontend-vercel-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Production pushes and preview builds read different variable scopes, so the
+    # target environment is derived from the trigger.
+    environment: ${{ github.event_name == 'push' && 'production' || 'preview' }}
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      IS_PRODUCTION: ${{ github.event_name == 'push' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Vercel configuration
+        id: guard
+        # Until the Vercel project exists this workflow has nothing to deploy to.
+        # Skipping keeps pull requests green instead of failing on absent secrets.
+        run: |
+          if [ -z "${VERCEL_TOKEN:-}" ] || [ -z "${VERCEL_PROJECT_ID:-}" ] || [ -z "${VERCEL_ORG_ID:-}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Vercel secrets are not configured; skipping frontend deployment."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.guard.outputs.configured == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.guard.outputs.configured == 'true'
+        run: npm ci
+      - name: Install Vercel CLI
+        if: steps.guard.outputs.configured == 'true'
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel environment
+        if: steps.guard.outputs.configured == 'true'
+        # Also materialises RUNTIME_API_ORIGIN and VITE_RUNTIME_WS_ORIGIN from the
+        # Vercel project so the build embeds the right runtime endpoints.
+        run: |
+          if [ "$IS_PRODUCTION" = "true" ]; then
+            vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          else
+            vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+          fi
+
+      - name: Build
+        if: steps.guard.outputs.configured == 'true'
+        run: |
+          if [ "$IS_PRODUCTION" = "true" ]; then
+            vercel build --prod --token="$VERCEL_TOKEN"
+          else
+            vercel build --token="$VERCEL_TOKEN"
+          fi
+
+      - name: Deploy
+        if: steps.guard.outputs.configured == 'true'
+        id: deploy
+        run: |
+          set -euo pipefail
+          if [ "$IS_PRODUCTION" = "true" ]; then
+            url="$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+          else
+            url="$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")"
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed to $url" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke check
+        if: steps.guard.outputs.configured == 'true'
+        run: curl --fail --show-error --silent --retry 5 --retry-delay 3 --retry-all-errors "${{ steps.deploy.outputs.url }}" >/dev/null
